@@ -165,6 +165,7 @@ async function boot(){
    if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
    if(st)window.__st=st;
+   if(st&&st.leftovers&&!window.__lo){window.__lo=1;say(`${st.leftovers} Game AI job${st.leftovers>1?'s':''} from before ${st.leftovers>1?'are':'is'} still running in the background and using your GPU (the app was closed while ${st.leftovers>1?'they':'it'} ran), which slows everything down. Type /stop to end ${st.leftovers>1?'them':'it'}.`,'w')}
    if(st&&st.update_available&&window.__avail!==st.update_available){window.__avail=st.update_available;say(`Update available (version ${esc(st.update_available)}). Type /update to install it.`,'d')}
    if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say(st.training&&st.learning?'An update is ready. Learning pauses after this round, installs it, and carries on by itself.':'An update is ready. It installs by itself when the current training finishes.','d')}
    if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;const playing=()=>S&&S.state==='play'&&Date.now()-(window.__lastKey||0)<20000;

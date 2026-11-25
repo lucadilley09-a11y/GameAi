@@ -48,7 +48,7 @@ def status():
     from .update import local_version
     v = STATE.setdefault("started_version", local_version())  # the version this running app is, not the one just downloaded
     from .update import mode as update_mode
-    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "update_available": STATE.get("update_available"),
+    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "update_available": STATE.get("update_available"), "leftovers": STATE.get("leftovers", 0),
             "update_mode": update_mode(), "app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
             "training": STATE["job"]["running"], "learning": STATE["job"].get("kind") == "learn" and STATE["job"]["running"]}
 
@@ -409,6 +409,9 @@ RESTART = 42  # start.bat restarts the app when it exits with this code (after a
 
 def restart_soon():
     time.sleep(1.5)  # let the page get its answer first
+    t0 = time.time()
+    while (STATE["busy"] or STATE["job"]["running"]) and time.time() - t0 < 3600:
+        time.sleep(1)  # something started meanwhile: let it finish first (the new code is already in place)
     os._exit(RESTART)
 
 
@@ -425,10 +428,45 @@ def torch_ok():
         return False
 
 
-def kill_job():
-    """Stop the running job and everything it started (like the teacher inside learning)."""
+JOB_MODULES = ("gameai.train", "gameai.teacher", "gameai.learn", "gameai.all", "gameai.improve", "gameai.bench", "gameai.code.coder", "gameai.phase0")
+
+
+def leftover_jobs():
+    """Game AI jobs still running from before (the app was closed or crashed while they ran). They keep using
+    the GPU and slow everything down, and nothing shows them. -> list of psutil processes"""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    mine, here, out = os.getpid(), os.path.abspath("."), []
     p = STATE.get("proc")
-    if not (p and p.poll() is None): return False
+    ours = {p.pid} if p and p.poll() is None else set()
+    if ours:
+        try: ours |= {c.pid for c in psutil.Process(p.pid).children(recursive=True)}
+        except Exception: pass
+    for q in psutil.process_iter(["pid", "cmdline", "cwd"]):
+        try:
+            cmd = " ".join(q.info["cmdline"] or [])
+            if q.pid == mine or q.pid in ours or q.info.get("cwd") != here: continue
+            if any(f"-m {m}" in cmd for m in JOB_MODULES): out.append(q)
+        except Exception:
+            continue
+    return out
+
+
+def kill_leftovers():
+    n = 0
+    for q in leftover_jobs():
+        try: q.kill(); n += 1
+        except Exception: pass
+    return n
+
+
+def kill_job():
+    """Stop the running job and everything it started (like the teacher inside learning), and any leftover jobs."""
+    old = kill_leftovers(); STATE["leftovers"] = 0
+    p = STATE.get("proc")
+    if not (p and p.poll() is None): return old > 0
     STATE["job"]["stopped"] = True
     if os.path.exists("learn/RESUME"): os.remove("learn/RESUME")
     if os.name == "nt": subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -501,6 +539,7 @@ def auto_update():
 def main():
     from .update import local_version
     STATE["started_version"] = local_version()
+    STATE["leftovers"] = len(leftover_jobs())  # the page tells you, and /stop ends them
     load_model()
     if not os.environ.get("GAMEAI_NO_UPDATE"): threading.Thread(target=auto_update, daemon=True).start()
     if os.path.exists(SHARE_FILE):

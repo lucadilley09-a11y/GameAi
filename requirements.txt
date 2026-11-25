@@ -9,3 +9,4 @@ accelerate
 bitsandbytes
 mini-racer
 cryptography>=41
+psutil

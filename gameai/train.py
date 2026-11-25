@@ -69,9 +69,13 @@ def cap_gpu_memory(device, log=print):
     if device != "cuda": return
     try:
         free, total = torch.cuda.mem_get_info()
-        frac = max(0.3, min(0.95, (free - 400 * 2**20) / total))  # leave a little for Windows and the screen
+        mine = torch.cuda.memory_reserved()  # the model and data this program already put on the GPU count too
+        frac = max(0.02, min(0.95, (free + mine - 400 * 2**20) / total))  # leave a little for Windows and the screen
         torch.cuda.set_per_process_memory_fraction(frac)
         log(f"GPU memory: using up to {frac * total / 2**30:.1f} of {total / 2**30:.1f} GB (the rest is in use by Windows and other programs)")
+        if free + mine < 3 * 2**30:
+            log(f"Warning: only {(free + mine) / 2**30:.1f} GB of the GPU is free. Another program is using the rest (often a leftover "
+                "teacher AI or an old training run). Close it, or restart the PC, for full speed.")
     except Exception as e:
         log(f"could not cap GPU memory: {e}")
 
@@ -240,7 +244,10 @@ def main():
                     part.backward(); loss = loss + part.detach()
                 break
             except torch.OutOfMemoryError:
-                if micro <= 8: raise
+                if micro <= 8:
+                    print("The GPU is out of memory even in the smallest pieces: another program is probably using it. "
+                          "Close it (or restart the PC) and try again.", flush=True)
+                    raise
                 micro //= 2
                 for o in opts: o.zero_grad(set_to_none=True)
                 torch.cuda.empty_cache()

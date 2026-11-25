@@ -16,7 +16,7 @@ import hashlib, io, json, os, shutil, subprocess, sys, time, urllib.request, zip
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 KEEP = {"data", "models", "runs", "bench", "checkpoints", "learn", "memory", "games", "play", "for-chromebook", "export",
-        ".venv", "logs", "update.json", ".version", "backup", "sealed"}  # never overwritten by an update
+        ".venv", "logs", "update.json", ".version", "backup", "sealed", "runtime"}  # never overwritten by an update
 API = "https://api.github.com/repos/{repo}/commits/{branch}"
 TREE = "https://api.github.com/repos/{repo}/git/trees/{sha}?recursive=1"
 MANIFEST = "MANIFEST.sha256.json"
@@ -125,8 +125,11 @@ def rollback(bad=True):
     info_p = os.path.join(BACKUP, ".backup.json")
     if not os.path.exists(info_p): return {"ok": False, "error": "there is no previous version saved yet"}
     info, now = json.load(open(info_p)), local_version()
-    for rel in code_files():  # files the update added
-        if rel not in info["files"]: os.remove(os.path.join(ROOT, *rel.split("/")))
+    man = os.path.join(ROOT, MANIFEST)
+    added = set(json.load(open(man))["files"]) - set(info["files"]) if os.path.exists(man) else set()
+    for rel in added:  # only files the update itself added (never anything of yours)
+        p = os.path.join(ROOT, *rel.split("/"))
+        if os.path.exists(p): os.remove(p)
     for rel in info["files"]:
         dest = os.path.join(ROOT, *rel.split("/"))
         os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -207,7 +210,7 @@ def check(install=True, quiet=False):
     if not cfg:
         return {"available": False, "error": "no update.json yet"}
     if mode(cfg) == "off":
-        return {"available": False, "error": "updates are off (type /updates on to turn them back on)"}
+        return {"available": False, "error": "updates are off (type /updates instant to turn them back on)"}
     try:
         new = latest(cfg)
     except Exception as e:
