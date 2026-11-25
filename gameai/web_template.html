@@ -51,6 +51,7 @@ canvas:focus{outline:1px solid var(--blue)}
 .a,.u{color:var(--ink)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}.k{color:var(--acc)}.ok{color:var(--ok)}
 .welcome{border:1px solid var(--line2);padding:10px 14px;display:inline-block;max-width:100%}.welcome b{color:var(--acc);font-weight:400}
 .menu{display:flex;flex-direction:column;margin:6px 0 2px}
+.qbtn{background:#0e639c;color:#fff;border:0;padding:3px 10px;margin:6px 6px 0 0;font:inherit;cursor:pointer;border-radius:2px}.qbtn:hover{background:#1177bb}.qbtn:disabled{opacity:.45;cursor:default}
 .menu button{all:unset;cursor:pointer;padding:1px 0 1px 2ch;position:relative;color:var(--ink);font:inherit}
 .menu button.sel{color:var(--sel)}.menu button.sel::before{content:'❯';position:absolute;left:0}.menu button:hover{color:var(--sel)}
 table{border-collapse:collapse;margin:2px 0}td{padding:0 3ch 0 0;vertical-align:top}td:first-child{white-space:nowrap}
@@ -165,6 +166,7 @@ async function boot(){
    if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
    if(st)window.__st=st;
+   if(st&&st.autopilot)autoShow(st.autopilot);
    if(st&&st.leftovers&&!window.__lo){window.__lo=1;say(`${st.leftovers} Game AI job${st.leftovers>1?'s':''} from before ${st.leftovers>1?'are':'is'} still running in the background and using your GPU (the app was closed while ${st.leftovers>1?'they':'it'} ran), which slows everything down. Type /stop to end ${st.leftovers>1?'them':'it'}.`,'w')}
    if(st&&st.update_available&&window.__avail!==st.update_available){window.__avail=st.update_available;say(`Update available (version ${esc(st.update_available)}). Type /update to install it.`,'d')}
    if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say(st.training&&st.learning?'An update is ready. Learning pauses after this round, installs it, and carries on by itself.':'An update is ready. It installs by itself when the current training finishes.','d')}
@@ -203,6 +205,19 @@ async function loadFiles(fs){
 async function decodeAny(prompt){
  if(API&&API.app&&API.loaded){const r=await fetch('api/decode',{method:'POST',body:JSON.stringify({prompt})});if(r.ok)return r.json()}
  return AI.decode(prompt);
+}
+// the autopilot: its questions (click an answer), its news, and what it's doing (status bar)
+function autoShow(a){
+ const seen=+(store.get('gameai.autonews',0)||0);let top=seen;
+ for(const n of a.news||[])if(n.id>seen){say(esc(n.text),n.kind||'d');top=Math.max(top,n.id)}
+ if(top>seen)store.set('gameai.autonews',top);
+ const q=a.question;
+ if(q&&window.__aq!==q.id){window.__aq=q.id;
+  const d=say(`<b>Question:</b> ${esc(q.text)}<br>`+q.choices.map((c,i)=>`<button class="qbtn" data-i="${i}">${esc(c)}</button>`).join(' '),'u');
+  d.querySelectorAll('.qbtn').forEach(b=>b.onclick=()=>{d.querySelectorAll('.qbtn').forEach(x=>x.disabled=true);
+   post('api/answer',{id:q.id,choice:q.choices[+b.dataset.i]}).then(r=>{if(r.ok){say(`OK: ${esc(q.choices[+b.dataset.i])}.`,'d');window.__aq=null}else{say(esc(r.error||'That didn\'t work.'),'w');d.querySelectorAll('.qbtn').forEach(x=>x.disabled=false)}})})}
+ window.__auto=a;
+ if(!(window.__st&&window.__st.training)&&!$('sbJob').dataset.busy)$('sbJob').textContent=a.on?(a.step?`autopilot: next is ${a.label}; starts when you're away`:a.label==='all done'?'':`autopilot: ${a.label}`):'';
 }
 const post=(u,b)=>fetch(u,{method:'POST',body:JSON.stringify(b||{})}).then(async r=>({ok:r.ok,...(await r.json().catch(()=>({})))}));
 let watching=false,spinT=null,spinMsg='',spinT0=0;
@@ -374,7 +389,7 @@ async function finish(prompt,pred,edit,ms){
  setTimeout(()=>cv.focus(),0);
 }
 const HELP=[['/upgrade','teach your AI new parts of the game language after an update (keeps what it learned)'],['/code <what enemies do>','your AI writes JavaScript for the enemies, tests it, and puts it in the game (/code off removes it)'],['/sound on|off','turn the game sounds on or off'],['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best|max','how many versions the playtesters try per game (1, 8, 16 or 32; best is the default)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
- ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now and install it'],['/phase0 <part>','PC app: Phase 0 measurements: hardware, fullstack, profile, licences, bakeoff, independence, report or all (results in bench\\phase0)'],['/update rollback','PC app: put the previous version back'],['/updates instant|manual|off','PC app: install updates by themselves, only when you say, or never go online for them'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
+ ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/auto [on|off]','PC app: the autopilot does the remaining setup by itself when you\'re away and asks you simple questions'],['/update','PC app: check for a new version now and install it'],['/phase0 <part>','PC app: Phase 0 measurements: hardware, fullstack, profile, licences, bakeoff, independence, report or all (results in bench\\phase0)'],['/update rollback','PC app: put the previous version back'],['/updates instant|manual|off','PC app: install updates by themselves, only when you say, or never go online for them'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
 function teach(prompt,rec,quiet){
  // send a corrected answer to the PC: the next learning round learns from it (counts 5x)
@@ -443,6 +458,7 @@ function command(line){
  if(pending){answer(line);return}
  say('&gt; '+esc(line),'u');
  const [cmd,...rest]=line.split(' '),arg=rest.join(' ').trim();
+ if(window.__st)post('api/active').catch(()=>{});  // you're here: the autopilot waits until you're away
  if(!line.startsWith('/'))return make(line,false);
  switch(cmd.toLowerCase()){
   case '/help':say('<table>'+HELP.map(([a,b])=>`<tr><td class="a">${esc(a)}</td><td class="d">${esc(b)}</td></tr>`).join('')+'</table>');break;
@@ -470,6 +486,7 @@ function command(line){
   case '/teacher':if(needApp())break;post('api/teacher',{n:+arg||2000}).then(r=>{if(!r.ok)say(esc(r.error),'w');else{say(`The teacher is writing ${r.n} natural examples. They're saved as it goes, so you can stop any time. The first time, it downloads itself (about 3 GB). Tip: /learn on runs a smaller teacher at the same time as learning, so your AI learns from new examples every round.`);watch()}});break;
   case '/update':if(needApp())break;if(arg==='rollback'){say('Putting the previous version back…','d');post('api/update',{rollback:true}).then(r=>say(r.ok?`Back on version ${esc(r.version)}. The app restarts in a moment, and version ${esc(r.skipped)} won't be installed again.`:esc(r.error),r.ok?'a':'d'));break}say('Checking for updates…','d');post('api/update').then(r=>say(r.installed?`Installing: ${esc(r.message)}. The app restarts in a moment.`:r.error?esc(r.error):'Already up to date.',r.installed?'a':'d'));break;
   case '/phase0':{if(needApp())break;const [w,...more]=arg.split(' ');const parts={hardware:'the hardware baseline (about 2 minutes)',fullstack:'the whole app at once (about 5 minutes)',profile:'where the time goes (about 5 minutes)',licences:'licences and sizes (nothing downloaded)',bakeoff:'the bake-off, one model at a time (several hours; it can be stopped with /stop and carries on later)',independence:'the offline test',report:'the bake-off table',all:'everything, in order (several hours)'};if(!parts[w]){say('Use /phase0 hardware, fullstack, profile, licences, bakeoff, independence, report or all.','d');break}post('api/phase0',{what:w,args:more.join(' ')}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(`Running ${parts[w]}. Results are saved in bench\\phase0. Send them to Claude when it's done.`);watch()}});break}
+  case '/auto':{if(needApp())break;if(arg==='on'||arg==='off'){post('api/auto',{on:arg==='on'}).then(r=>say(arg==='on'?'The autopilot is on: it does the next setup steps by itself when you\'re away, and asks you when it needs a decision.':'The autopilot is paused. /auto on turns it back on.','d'))}else{const a=window.__auto;say(a?`Autopilot: ${a.on?'on':'paused'}. ${a.done} of ${a.total} steps done. ${a.step?'Next: '+esc(a.label)+'. It starts after 10 minutes without typing in the app.':esc(a.label)+'.'}`:'The autopilot status isn\'t loaded yet.','d')}break}
   case '/updates':if(needApp())break;if(!['instant','manual','off'].includes(arg)){say('Updates are set to: '+esc((window.__st&&window.__st.update_mode)||'instant')+'. Type /updates instant, /updates manual or /updates off.','d');break}post('api/updates',{mode:arg}).then(r=>say(r.ok?{instant:'Updates install by themselves (never during training or while something is being made).',manual:'Updates only install when you type /update. I\'ll tell you when one is ready.',off:'Updates are off: the app never goes online to look for them. Type /updates instant to turn them back on.'}[r.mode]:esc(r.error),'d'));break;
   case '/quality':if(!TRIES[arg]){say(`Playtest quality is ${quality} (${TRIES[quality]} version${TRIES[quality]>1?'s':''} per game). Use /quality fast, normal, best or max.`,'d');break}
    quality=arg;store.set('gameai.quality',arg);say(`Quality set to ${arg}: the bot will try ${TRIES[arg]} version${TRIES[arg]>1?'s':''} of each game and keep the best.`);break;

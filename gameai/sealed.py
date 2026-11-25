@@ -78,8 +78,8 @@ def summary():
 def add(set_name, path, kind=None):
     rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
     for r in rows:
-        if not isinstance(r.get("request"), str) or not ("expect" in r or "ask" in r):
-            raise ValueError("every line needs a \"request\" and either \"expect\" or \"ask\"")
+        if not isinstance(r.get("request"), str) or not ("expect" in r or "ask" in r or "answer" in r):
+            raise ValueError("every line needs a \"request\" and either \"expect\", \"ask\" or \"answer\"")
     store = _open()
     s = store["sets"].setdefault(set_name, {"kind": kind or set_name, "version": 0, "active": [], "reserve": [], "retired": [], "added": []})
     random.Random(time.time_ns()).shuffle(rows)

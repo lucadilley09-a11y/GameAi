@@ -48,7 +48,7 @@ def status():
     from .update import local_version
     v = STATE.setdefault("started_version", local_version())  # the version this running app is, not the one just downloaded
     from .update import mode as update_mode
-    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "update_available": STATE.get("update_available"), "leftovers": STATE.get("leftovers", 0),
+    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "update_available": STATE.get("update_available"), "leftovers": STATE.get("leftovers", 0), "autopilot": autopilot_status(),
             "update_mode": update_mode(), "app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
             "training": STATE["job"]["running"], "learning": STATE["job"].get("kind") == "learn" and STATE["job"]["running"]}
 
@@ -180,6 +180,18 @@ class H(BaseHTTPRequestHandler):
             if size not in ("tiny", "small", "base", "large"): return self.send(400, {"error": "size must be tiny, small, base, large or coder"})
             threading.Thread(target=run_job, args=(["gameai.all", "--size", size],), daemon=True).start()
             return self.send(200, {"ok": True})
+        if path == "/api/active":  # you typed something in the app: you're here, so the autopilot doesn't start long work
+            STATE["last_use"] = time.time(); return self.send(200, {"ok": True})
+        if path == "/api/answer":
+            from . import autopilot
+            try: autopilot.answer(str(b.get("id", "")), str(b.get("choice", "")))
+            except (ValueError, KeyError) as e: return self.send(400, {"error": str(e)})
+            return self.send(200, {"ok": True, "autopilot": autopilot_status()})
+        if path == "/api/auto":
+            from . import autopilot
+            st = autopilot.load(); st["on"] = bool(b.get("on", True))
+            if st["on"] and (st["answers"].get("when") or {}).get("choice", "").startswith("Not now"): st["answers"].pop("when")
+            autopilot.save(st); return self.send(200, {"ok": True, "autopilot": autopilot_status()})
         if path == "/api/phase0":  # measurements before choosing the base model (see gameai/phase0)
             if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             what = str(b.get("what", "")).strip() or "help"
@@ -498,7 +510,7 @@ def watchdog():
     while True:
         time.sleep(5)
         seen = STATE.get("seen")
-        if seen and time.time() - seen > 150 and not STATE["job"]["running"]:
+        if seen and time.time() - seen > 150 and not STATE["job"]["running"] and not autopilot_has_work():
             os._exit(0)
 
 
@@ -544,9 +556,49 @@ def auto_update():
             pass
 
 
+def autopilot_status():
+    try:
+        from . import autopilot
+        return autopilot.status()
+    except Exception as e:
+        return {"on": False, "label": f"autopilot unavailable: {e}"}
+
+
+def autopilot_has_work():
+    try:
+        from . import autopilot
+        st = autopilot.load(); sid, _, _ = autopilot.next_step(st)
+        return bool(st.get("on", True) and sid)
+    except Exception:
+        return False
+
+
+def autopilot_loop():
+    """Every 20 seconds: if you're away (no typing in the app for 10 minutes) and nothing else runs, do the next step."""
+    from . import autopilot
+    STATE.setdefault("last_use", time.time())
+    while True:
+        time.sleep(20)
+        try:
+            if STATE["job"]["running"] or STATE.get("updating"): continue
+            st = autopilot.load()
+            sid, label, cmd = autopilot.next_step(st)
+            if not sid or not autopilot.may_start(st, time.time() - STATE.get("last_use", time.time())): continue
+            STATE["auto_step"] = sid
+            run_job(cmd, "autopilot")
+            j = STATE["job"]
+            if j.get("stopped"): continue  # you stopped it: not a failure, it carries on later
+            autopilot.finished(sid, bool(j.get("ok")), " / ".join(l for l in j.get("log", [])[-3:] if l))
+        except Exception as e:
+            STATE["auto_error"] = str(e)
+        finally:
+            STATE["auto_step"] = None
+
+
 def main():
     from .update import local_version
     STATE["started_version"] = local_version()
+    threading.Thread(target=autopilot_loop, daemon=True).start()
     STATE["leftovers"] = len(leftover_jobs())  # the page tells you, and /stop ends them
     load_model()
     if not os.environ.get("GAMEAI_NO_UPDATE"): threading.Thread(target=auto_update, daemon=True).start()

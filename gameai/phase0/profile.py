@@ -45,6 +45,8 @@ def train_profile(size, steps=10):
     n_out = len(OUT_FIELDS) + 1
     micro = min(T.SIZE_DEFAULTS[size][1], T.MICRO.get(size, 64))
     batch = T.SIZE_DEFAULTS[size][1]
+    if dev == "cpu": batch = micro = 16  # without a GPU the full batch doesn't fit in normal memory; times are then per 16 examples
+    else: T.cap_gpu_memory(dev, log=lambda *a: None)  # same as real training: never spill into shared memory
     idx = data.sample(batch)
     if dev == "cuda": torch.cuda.reset_peak_memory_stats()
 

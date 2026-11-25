@@ -163,6 +163,18 @@ learned (all its layers and every word it knew; in a test it still got 93.8% of 
 catch-up), gets room for the new words, and a short catch-up training (5-10 minutes) teaches it the new parts.
 No training from scratch.
 
+## The autopilot (nothing to type)
+
+The app does the remaining setup by itself, in order: testing your PC, getting everyday-conversation data, testing
+the candidate AI models, choosing the best one (a fixed rule on validation results), installing it, training the
+first skill, and making the first release. It asks you simple questions in the chat when it needs a decision: just
+click an answer. The long work starts only after 10 minutes without typing in the app (or only at night, if you
+choose that), and the app stays running in the background while there's work left. `/auto off` pauses it,
+`/auto` shows where it is. If a step fails twice, it asks you what to do.
+
+`training-check.bat`: double-click it if training ever seems stuck. It shows every step with times and saves it to
+`logs\training-check.txt`.
+
 ## Phase 0: measuring before choosing the base model
 
 Type `/phase0 <part>` in the app (results are saved in `bench\phase0`; send them to Claude):

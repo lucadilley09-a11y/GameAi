@@ -51,6 +51,8 @@ def similarity(sig_a, sig_b):
 def text_of(row):
     for k in ("prompt", "request", "text", "input"):
         if k in row: return row[k]
+    if "messages" in row:  # a conversation: what the person asked is what makes it the same question
+        return " ".join(m.get("content", "") for m in row["messages"] if m.get("role") == "user")
     return json.dumps(row, sort_keys=True)
 
 
