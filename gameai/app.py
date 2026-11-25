@@ -140,7 +140,10 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/train":
             if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             size = b.get("size", "small")
-            if size not in ("tiny", "small", "base", "large"): return self.send(400, {"error": "size must be tiny, small, base or large"})
+            if size == "coder":  # the code-writing AI (code track)
+                threading.Thread(target=run_job, args=(["gameai.code.coder", "train", "--size", "small"], "coder"), daemon=True).start()
+                return self.send(200, {"ok": True})
+            if size not in ("tiny", "small", "base", "large"): return self.send(400, {"error": "size must be tiny, small, base, large or coder"})
             threading.Thread(target=run_job, args=(["gameai.all", "--size", size],), daemon=True).start()
             return self.send(200, {"ok": True})
         if path == "/api/learn":
@@ -193,6 +196,20 @@ class H(BaseHTTPRequestHandler):
                 return self.send(400, {"error": str(e)})
             with STATE["lock"]: load_model()
             return self.send(200, {"ok": True, "version": n})
+        if path == "/api/code":
+            if not os.path.exists("models/coder.pt"): return self.send(409, {"error": "No coder yet. Type /train coder first (about 10-20 minutes on your GPU)."})
+            text = str(b.get("text", "")).strip()[:160]
+            if not text: return self.send(400, {"error": "say what the enemies should do"})
+            try:
+                with STATE["lock"]:
+                    from .code import coder
+                    dev = "cuda" if torch_ok() else "cpu"
+                    if STATE.get("coder_mtime") != os.path.getmtime("models/coder.pt"):
+                        STATE["coder"] = coder.load("models/coder.pt", dev); STATE["coder_mtime"] = os.path.getmtime("models/coder.pt")
+                    m, tok, _ = STATE["coder"]
+                    return self.send(200, coder.write(m, tok, text, dev))
+            except Exception as e:
+                return self.send(500, {"error": f"The coder hit a problem: {e}"})
         if path == "/api/stop":
             return self.send(200, {"ok": True, "stopped": kill_job()})
         if path == "/api/autostart":
@@ -352,6 +369,14 @@ def restart_soon():
 def busy_msg():
     what = {"teacher": "The teacher is still writing examples", "learn": "Always-on learning is running"}.get(STATE["job"].get("kind"), "Training is still running")
     return f"{what}. Type /stop to cancel it, then try again."
+
+
+def torch_ok():
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
 
 
 def kill_job():

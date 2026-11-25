@@ -61,8 +61,8 @@ def quick_accuracy(model, data, tok, amp, n_out, limit=2000):
     model.eval()
     ids = [torch.tensor(f, device=data.X.device) for f in tok.field_ids]
     fields = exact = 0
-    for i in range(0, min(limit, data.n), 1000):
-        idx = torch.arange(i, min(i + 1000, data.n, limit), device=data.X.device)
+    for i in range(0, min(limit, data.n), 250):
+        idx = torch.arange(i, min(i + 250, data.n, limit), device=data.X.device)
         xb, yb, P = data.batch(idx)
         with amp:
             lg = model(xb)[:, P - 1:P - 1 + len(ids)].float()
@@ -95,6 +95,7 @@ def wsd(step, total, warm=0.05, decay=0.2):
 
 
 # Bigger models learn best with more steps, bigger batches and gentler learning rates.
+MICRO = {"tiny": 128, "small": 128, "base": 32, "large": 16}
 SIZE_DEFAULTS = {  # size: (steps, batch, AdamW lr, Muon lr)
     "tiny": (3000, 128, 3e-3, 0.02),
     "small": (4000, 128, 3e-3, 0.02),
@@ -148,6 +149,7 @@ def main():
     n_params = model.num_params()
     d = SIZE_DEFAULTS.get(a.size, SIZE_DEFAULTS["small"])
     a.steps = a.steps or d[0]; a.batch = a.batch or d[1]; a.lr = a.lr or d[2]; a.muon_lr = a.muon_lr or d[3]
+    micro = min(a.batch, MICRO.get(a.size, 64))  # pieces per step that fit in 8 GB (it halves them by itself if not)
     if a.no_muon:
         opts = [torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.01)]
     else:
@@ -173,11 +175,24 @@ def main():
         for o in opts:
             for g in o.param_groups: g["lr"] = g["base_lr"] * wsd(step, a.steps)
         model.train()
-        xb, yb, P = train_d.batch(torch.randint(train_d.n, (a.batch,), device=device))
-        with amp:
-            loss = recipe_loss(fwd, xb, yb, P, n_out)
-        for o in opts: o.zero_grad(set_to_none=True)
-        loss.backward()
+        idx = torch.randint(train_d.n, (a.batch,), device=device)
+        while True:
+            try:
+                # the batch is done in smaller pieces that add up (same learning, much less GPU memory)
+                for o in opts: o.zero_grad(set_to_none=True)
+                loss = 0.0
+                for c in idx.split(micro):
+                    xb, yb, P = train_d.batch(c)
+                    with amp:
+                        part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
+                    part.backward(); loss = loss + part.detach()
+                break
+            except torch.OutOfMemoryError:
+                if micro <= 8: raise
+                micro //= 2
+                for o in opts: o.zero_grad(set_to_none=True)
+                torch.cuda.empty_cache()
+                print(f"The GPU ran out of memory, so training uses smaller pieces now ({micro} at a time). Same result, a bit slower.", flush=True)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         for o in opts: o.step()
         ema = loss.detach() if ema is None else 0.98 * ema + 0.02 * loss.detach()  # stays on the GPU: no waiting every step

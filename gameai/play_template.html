@@ -281,7 +281,7 @@ function buildLevel(r){
  const n=r.enemy==='none'?0:Math.max(1,Math.round({few:3,some:6,many:10}[r.count]*diff*area*(r.balance||1)*(1+.15*(lv-1))));  // balance < 1: toned down so it can be beaten; later levels have more
  for(let i=0;i<n;i++)s.enemies.push(enemy(r.enemy,take(7),r.behavior));
  if(r.boss==='yes'&&lv===lvs){const b=enemy(r.enemy==='none'?THEME_EN[r.theme]:r.enemy,take(9),'chase');Object.assign(b,{boss:1,big:1,r:20,spd:.7,cd:2,hop:0,jit:0,ghost:0});s.enemies.push(b)}
- s.espd0=s.espd;S=s;$('restartBtn').disabled=false;$('editBtn').disabled=!trained;
+ s.brain=r.code?safeBrain(r.code):null;s.espd0=s.espd;S=s;$('restartBtn').disabled=false;$('editBtn').disabled=!trained;
 }
 function floorSpot(minD){let pos,k=0;do{pos={x:(1+ri(S.cols-2))*TS+16,y:(1+ri(S.rows-2))*TS+16};k++}while(k<80&&(solid(pos.x,pos.y)||Math.hypot(pos.x-S.p.x,pos.y-S.p.y)<minD));return pos}
 const ACT_TEXT={spawn:n=>n==='3'?'3 more enemies appear!':'A new enemy appears!',faster:()=>'Enemies speed up!',slower:()=>'Enemies slow down',boost:()=>'Speed boost!',heal:()=>'+1 heart',teleport:()=>'Teleported!',open_exit:()=>'The exit is open!',freeze:()=>'Enemies frozen!'};
@@ -302,11 +302,31 @@ function fire(ev){
  for(const x of S.rules)if(x.trig===ev)act(x);
 }
 function enemy(type,pos,beh){
- const e={...pos,r:EN[type].big?13:11,type,...EN[type],dx:0,dy:0,tt:0,stuck:0,ph:Math.random()*6,beh:beh&&beh!=='auto'?beh:'chase'};
+ const e={mem:{},...pos,r:EN[type].big?13:11,type,...EN[type],dx:0,dy:0,tt:0,stuck:0,ph:Math.random()*6,beh:beh&&beh!=='auto'?beh:'chase'};
  if(e.beh==='patrol'){const h=Math.random()<.5;e.dx=h?1:0;e.dy=h?0:1;e.tt=1e9}
  if(e.beh==='shoot')e.cd=1+Math.random()*2;
  return e;
 }
+// ---------- code your AI wrote (the code track) ----------
+// Same safety rules as gameai/code/safety.py: only allowed words, no loops, no strings, no functions,
+// no `this` or `window`. So an enemy brain can only do maths on the enemy, the player and the time.
+const B_KEY=new Set(['let','const','if','else','return','true','false']),B_GLOB=new Set(['e','p','t','Math','dist','dir']),
+ B_MATH=new Set(['sin','cos','atan2','hypot','abs','min','max','sign','PI','sqrt','floor','round','random']),B_PROP=new Set(['x','y','mem']);
+function safeBrain(code){
+ if(typeof code!=='string'||code.length>400||code.includes('=>'))return null;
+ const re=/\s+|(\d+(\.\d+)?)|([A-Za-z_]\w*)|(==?=?|!==?|<=|>=|&&|\|\||[-+*/%<>!?:;,.(){}\[\]=])/y,T=[];let m;re.lastIndex=0;
+ while(re.lastIndex<code.length){const at=re.lastIndex;m=re.exec(code);if(!m||re.lastIndex===at)return null;if(m[1]||m[3]||m[4])T.push(m[0])}
+ const local=new Set();
+ for(let i=0;i<T.length;i++){const k=T[i];if(!/^[A-Za-z_]/.test(k))continue;const b=T[i-1];
+  if(b==='.'){const o=T[i-2];if(o==='Math'){if(!B_MATH.has(k))return null}else if(T[i-2]==='mem'||(T[i-3]==='e'&&T[i-2]==='.')){if(k.startsWith('_')||k==='constructor'||k==='prototype')return null}else if(!B_PROP.has(k))return null;continue}
+  if(b==='let'||b==='const'||(b===','&&!B_GLOB.has(k)&&!B_KEY.has(k)&&!local.has(k)&&T.slice(0,i).lastIndexOf('let')+T.slice(0,i).lastIndexOf('const')>T.slice(0,i).lastIndexOf(';'))){if(B_GLOB.has(k)||B_KEY.has(k)||k==='window'||k==='this')return null;local.add(k);continue}
+  if(!B_KEY.has(k)&&!B_GLOB.has(k)&&!local.has(k))return null;
+  if(k==='Math'&&T[i+1]!=='.')return null}
+ if(!T.includes('return'))return null;
+ try{const f=new Function('e','p','t','dist','dir','"use strict";'+code);return f}catch(err){return null}
+}
+function bDist(a,b){return Math.hypot(b.x-a.x,b.y-a.y)}
+function bDir(a,b){const d=Math.hypot(b.x-a.x,b.y-a.y)||1;return [(b.x-a.x)/d,(b.y-a.y)/d]}
 function placeDoors(r,grid,cells,used){
  // doors (or gates) on narrow corridors that cut off part of the map; each key/switch is reachable without
  // going through any door, so every level can always be solved in order
@@ -378,12 +398,13 @@ function update(dt){
  for(const e of S.enemies){
   const ax=p.x-e.x,ay=p.y-e.y,d=Math.hypot(ax,ay)||1;e.tt-=dt;if(e.stuck>0)e.stuck-=dt;
   const chase=e.beh==='wander'?0:e.beh==='patrol'?S.aggro*.35:S.aggro;
-  if(d<chase&&e.stuck<=0&&S.shield<=0){e.dx=ax/d;e.dy=ay/d;if(e.beh==='patrol')e.tt=.5}else if(e.tt<=0){const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a);e.tt=1+Math.random()*1.5}
+  if(S.brain&&!e.boss){let v=null;try{v=S.brain(e,{x:p.x,y:p.y},S.t,bDist,bDir)}catch(err){}const n=v&&Math.hypot(v[0],v[1]);if(n>1e-9&&isFinite(n)){e.dx=v[0]/n;e.dy=v[1]/n}else{e.dx=0;e.dy=0}e.tt=1}
+  else if(d<chase&&e.stuck<=0&&S.shield<=0){e.dx=ax/d;e.dy=ay/d;if(e.beh==='patrol')e.tt=.5}else if(e.tt<=0){const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a);e.tt=1+Math.random()*1.5}
   if((e.beh==='shoot'||e.boss)&&S.freeze<=0&&d<320){e.cd-=dt;if(e.cd<=0){e.cd=(e.boss?2:2.6)/Math.sqrt({easy:.7,normal:1,hard:1.4}[S.r.difficulty]);beep('shot');for(const a of e.boss?[-.3,0,.3]:[0]){const c=Math.cos(a),s2=Math.sin(a),vx=ax/d,vy=ay/d;S.shots.push({x:e.x,y:e.y,vx:(vx*c-vy*s2)*230,vy:(vx*s2+vy*c)*230,t:0})}}}
   let sp=S.freeze>0?0:S.espd*e.spd*dt;if(e.beh==='shoot'&&d<150)sp*=.2;if(e.hop)sp*=Math.sin(S.t*6+e.ph)>0?1.8:.15;
   let mx=e.dx*sp,my=e.dy*sp;if(e.jit){mx+=(Math.random()-.5)*e.jit*sp*2;my+=(Math.random()-.5)*e.jit*sp*2}
   const ox=e.x,oy=e.y;move(e,mx,my);
-  if(!e.ghost&&!e.hop&&Math.hypot(e.x-ox,e.y-oy)<sp*.3){if(e.beh==='patrol'&&d>=chase){e.dx=-e.dx;e.dy=-e.dy;e.stuck=.2}else{e.stuck=.6;const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a)}}
+  if(!S.brain&&!e.ghost&&!e.hop&&Math.hypot(e.x-ox,e.y-oy)<sp*.3){if(e.beh==='patrol'&&d>=chase){e.dx=-e.dx;e.dy=-e.dy;e.stuck=.2}else{e.stuck=.6;const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a)}}
   if(d<(e.boss?30:e.big?24:20)&&S.inv<=0&&S.shield<=0)hurt(ax,ay,d);
  }
  S.shots=S.shots.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.t+=dt;if(b.t>3||solid(b.x,b.y))return false;

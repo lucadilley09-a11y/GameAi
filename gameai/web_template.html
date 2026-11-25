@@ -265,11 +265,12 @@ async function watch(){
    let p,label;
    if(j.kind==='teacher'){p=frac;label=`The teacher is writing examples: ${j.step} of ${j.total} kept${j.loss!=null?` (${Math.round(j.loss*100)}% pass its self-check)`:''}`}
    else if(stg){p=[0,0,.05+.85*frac,.92,.98][+stg];label=['','Making practice data','Training the AI','Testing it','Packing it up'][+stg]}
+   else if(j.kind==='coder'){p=j.total?frac*.9:null;label=j.step>=j.total-1?'Testing the code it writes':'Learning to write code'}
    else{p=j.total?frac:null;label=/test/i.test(st)?'Testing it':st||'Starting'}
    if(j.running&&j.total&&j.step&&(watch.k!==j.kind+st||!watch.t0)){watch.k=j.kind+st;watch.t0=Date.now();watch.s0=j.step}
    let left='';if(watch.t0&&j.step>watch.s0&&j.total){const rate=(j.step-watch.s0)/((Date.now()-watch.t0)/1000),sec=(j.total-j.step)/rate;if(isFinite(sec)&&sec>0)left=sec<90?` · about ${Math.round(sec)} s left`:` · about ${Math.round(sec/60)} min left`+(stg?' for this part':'')}
    const W=32,full=p==null?0:Math.round(Math.min(1,p)*W),bar=p==null?'░'.repeat(W):'█'.repeat(full)+'░'.repeat(W-full);
-   $('gtitle').textContent=j.kind==='teacher'?'Teacher':j.kind==='job'&&stg?'Training a new AI from scratch':'Working';
+   $('gtitle').textContent=j.kind==='teacher'?'Teacher':j.kind==='coder'?'Training the coder (your AI that writes code)':j.kind==='job'&&stg?'Training a new AI from scratch':'Working';
    $('ptext').innerHTML=`<span class="k">${bar}</span>  <span class="u">${p==null?'…':Math.floor(Math.min(1,p)*100)+'%'}</span>${esc(left)}<br>${esc(label)}${j.kind==='teacher'?`<br><span class="d">${esc((j.log.filter(l=>l.startsWith('kept')).at(-1)||'').replace(/^kept[^e]*e\.g\. /,'latest: '))}</span>`:''}`;
    $('sbJob').textContent=`${j.kind==='teacher'?'Teacher':label} ${p==null?'…':Math.floor(Math.min(1,p)*100)+'%'}${left}`;
   }
@@ -338,6 +339,7 @@ function describe(r,src,edit){
  if(r.boss==='yes')x.push(+r.levels>1?'a boss waits on the last level':'a boss is waiting for you');
  if(r.timer&&r.timer!=='none'&&r.goal!=='survive')x.push(`you have ${r.timer==='short'?'one minute':'two minutes'}`);
  if(x.length)t+=' Also, '+x.join(', ')+'.';
+ if(r.code&&r.codeWords)t+=` The enemies run code your AI wrote: they ${r.codeWords}.`;
  if(r.rules&&r.rules.length)t+=' Rules: '+r.rules.map(x=>ruleText(x,r)).join(' ');
  const picked=['theme','player','goal','enemy'].filter(f=>src[f]==='auto').map(f=>({theme:'the place',player:'the character',goal:'the goal',enemy:'the enemies'})[f]);
  if(picked.length)t+=` You didn't mention ${picked.join(' or ')}, so I picked ${picked.length>1||picked[0]==='the enemies'?'them':'it'}.`;
@@ -360,7 +362,7 @@ async function finish(prompt,pred,edit,ms){
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
-const HELP=[['/sound on|off','turn the game sounds on or off'],['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
+const HELP=[['/code <what enemies do>','your AI writes JavaScript for the enemies, tests it, and puts it in the game (/code off removes it)'],['/sound on|off','turn the game sounds on or off'],['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
  ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 15 seconds)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
 function teach(prompt,rec,quiet){
@@ -426,7 +428,7 @@ function command(line){
   case '/rate':{const m=arg.match(/^([1-5])\s*(.*)$/);if(!lastGame){say('Make a game first.','w');break}if(!m){say('Use: /rate 4 fun but short','w');break}
    const rs=store.get('gameai.ratings',[]);rs.push({...lastGame,rating:+m[1],note:m[2]});store.set('gameai.ratings',rs);say(`Saved. ${rs.length} rating${rs.length>1?'s':''} so far.`);
    if(API&&API.app&&+m[1]>=4&&!lastGame.edit&&!lastGame.corr&&lastGame.raw)post('api/rate',{prompt:lastGame.prompt,recipe:lastGame.raw,rating:+m[1]}).then(r=>{if(r.kept)say('It will also learn that it understood this request right.','d')});break}
-  case '/train':if(needApp())break;post('api/train',{size:arg||'small'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(`Training a ${esc(arg||'small')} AI from scratch. You can keep making games meanwhile.`);watch()}});break;
+  case '/train':if(needApp())break;post('api/train',{size:arg||'small'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(arg==='coder'?'Training the coder, your AI that writes code. About 10-20 minutes on your GPU. Then try /code circle around me.':`Training a ${esc(arg||'small')} AI from scratch. You can keep making games meanwhile.`);watch()}});break;
   case '/learn':if(needApp())break;post('api/learn',{on:arg!=='off'}).then(r=>{if(!r.ok)say(esc(r.error),'w');else if(r.stopping)say('Stopping after the current round finishes.','d');else{say('Always-on learning started. A teacher AI writes new real-person examples at the same time, and each round learns from all of them. Keep making games; it switches to each better version by itself.');watch()}});break;
   case '/graph':if(needApp())break;showTab('graph');$('prog').classList.add('on');$('graph').style.display='';showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
   case '/test':if(needApp())break;post('api/test').then(r=>{if(!r.ok)say(esc(r.error),'w');else watch()});break;
@@ -461,6 +463,18 @@ function command(line){
   case '/versions':if(needApp())break;fetch('api/versions').then(r=>r.json()).then(vs=>say(vs.length?'<table>'+vs.map(v=>`<tr><td class="${v.in_use?'k':'d'}">v${String(v.version).padStart(3,'0')}${v.in_use?' (in use)':''}</td><td>${v.total!=null?(v.total*100).toFixed(2)+'%':''}</td><td class="d">${v.time?new Date(v.time*1000).toLocaleString():''}</td></tr>`).join('')+'</table><span class="d">/rollback goes back one version; /rollback 3 goes to v003.</span>':'No saved versions yet. They are kept from the next time your AI improves.','d'));break;
   case '/rollback':if(needApp())break;post('api/rollback',{n:+arg||null}).then(r=>say(r.ok?`Now using version ${r.version}. Learning continues from this one.`:esc(r.error),r.ok?'a':'w'));break;
   case '/sound':{const off=arg==='off'||(!arg&&localStorage.getItem('gameai.mute')!=='1');try{localStorage.setItem('gameai.mute',off?'1':'0')}catch(e){}say(off?'Sound off. /sound on brings it back.':'Sound on.','d');break}
+  case '/code':{
+   if(arg==='off'){if(lastGame&&lastGame.r.code){delete lastGame.r.code;delete lastGame.r.codeWords;build(lastGame.r);say('The enemies are back to normal.','d')}else say('No code in this game.','d');break}
+   if(!arg){say('Tell your AI what the enemies should do, and it writes the code. For example: /code circle around me but run away when I get close. /code off removes it.','d');break}
+   if(needApp())break;if(!lastGame){say('Make a game first, then give its enemies code.','w');break}
+   spin('Writing code');post('api/code',{text:arg}).then(async r=>{unspin();
+    if(r.error){say(esc(r.error),'w');return}
+    const show=c=>`<pre style="margin:4px 0;padding:6px 10px;background:#181818;border:1px solid #3c3c3c;color:#9cdcfe;white-space:pre-wrap">${esc(c)}</pre>`;
+    if(!r.ok){say(`I couldn't write working code for that yet (${esc(r.reason)}). My best try:`+show(r.code),'w');say('Try simpler words, or something like: chase me, run away, circle around me, zigzag, walk left and right, stay 150 away, or "X when I get close, otherwise Y".','d');return}
+    say(`Understood: the enemies ${esc(r.words)}. Here's the code I wrote (it passed the test on try ${r.tries}):`+show(r.code));
+    const R={...lastGame.r,code:r.code,codeWords:r.words};spin('Playtesting');let res;try{res=await bestLevel(R,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
+    R.seed=res.best.seed;if(res.best.balance)R.balance=res.best.balance;lastGame={...lastGame,r:R};build(R);const pl=playReport(res,R);say(esc(pl.text),'d');if(pl.probs.length)say('Heads-up: '+esc(pl.probs.join('; ')),'w');
+    showTab('game');rememberGame(lastGame);if(API&&API.app)post('api/playlog',{prompt:'/code '+arg,recipe:R,code:r.code,spec:r.spec,proven:res.best.proven}).catch(()=>{})}).catch(()=>{unspin();say('Could not reach the coder.','w')});break}
   case '/questions':askOn=arg!=='off';store.set('gameai.ask',askOn);say(`Questions ${askOn?'on':'off'}.`);break;
   case '/load':$('files').click();say('Pick gameai-model.json (from the for-chromebook folder on your PC).','d');break;
   case '/ratings':{const t=JSON.stringify(store.get('gameai.ratings',[]));navigator.clipboard?.writeText(t).then(()=>say('Ratings copied. Paste them into a file on your PC.'),()=>say('Copy was blocked by the browser.','w'));break}
