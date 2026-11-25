@@ -181,10 +181,10 @@ def _train(skill, minutes, share, source="data"):
     import subprocess
     from . import registry
     hf = registry.load()["entries"]["core_hf"]["path"]
-    r = subprocess.run([sys.executable, "-u", "-m", "gameai.lora_train", "--skill", skill, "--base", hf, "--minutes", str(minutes), "--general", str(share),
-                        "--general-source", source]
-                       + (["--resume"] if os.path.exists(os.path.join("models", "adapters", skill, "training", "trainer_state.pt")) else []))
-    if r.returncode: raise SystemExit(f"training {skill} failed")
+    from .sub import run
+    code = run(["gameai.lora_train", "--skill", skill, "--base", hf, "--minutes", str(minutes), "--general", str(share), "--general-source", source]
+               + (["--resume"] if os.path.exists(os.path.join("models", "adapters", skill, "training", "trainer_state.pt")) else []))
+    if code: raise SystemExit(f"training {skill} failed")
 
 
 ARMS = [("data", 0.2), ("data", 0.3), ("data", 0.4), ("data", 0.5), ("self", 0.3)]

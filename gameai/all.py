@@ -8,7 +8,8 @@ import argparse, json, os, subprocess, sys
 
 def step(title, args):
     print(f"\n=== {title} ===", flush=True)
-    if subprocess.run([sys.executable, "-m", *args]).returncode:
+    from .sub import run
+    if run(args):
         print("\nStopped: this step failed. Copy the text above and send it to Claude.")
         sys.exit(1)
 

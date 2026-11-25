@@ -17,7 +17,8 @@ PRACTICE = int(os.environ.get("GAMEAI_LEARN_DATA", 40_000))  # new practice prom
 
 
 def run(args):
-    return subprocess.run([sys.executable, "-m", *args]).returncode == 0
+    from .sub import run as _run
+    return _run(args) == 0
 
 
 TEACHER_MODEL = os.environ.get("GAMEAI_LEARN_TEACHER_MODEL", "Qwen/Qwen3.5-4B")  # the smaller teacher fits beside training on 8 GB
