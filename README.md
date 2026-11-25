@@ -247,3 +247,18 @@ installs them (about 65 MB, in `runtime\tools`); after that they work offline.
   `except: pass` are errors.
 
 By hand: `python -m gameai.checks validate game.js` (add `--write` to save the formatting).
+
+## Repair tools
+
+How the AI changes existing code without breaking it (plan: Phase 4):
+
+- **Project map:** every file's imports, exports, classes, functions and signatures (Tree-sitter), so it uses
+  what exists instead of inventing names. `python -m gameai.repair map my_game`
+- **Safe edits:** small search-and-replace or whole-function edits. The text to replace must match exactly the
+  expected number of times, the file must not have changed since it was read, and an edit that breaks the syntax
+  is refused.
+- **Debugger:** runs the tests and shows why one failed: the error, the lines involved, expected vs actual and the
+  variable values at that moment (and the game's state when asked). `python -m gameai.repair test my_game`
+- **All-or-nothing changes:** edits across several files are tried in a copy first; formatting, checkers, tests
+  and the page's file links must not get worse, or nothing changes. Every applied change can be undone:
+  `python -m gameai.repair rollback my_game`.

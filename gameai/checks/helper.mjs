@@ -29,6 +29,8 @@ try { stylua = await import(pathToFileURL(path.join(NM, '@johnnymorganz', 'stylu
 
 const KIT_DTS = process.env.GAMEAI_KIT_DTS || '';
 const KIT = KIT_DTS ? readFileSync(KIT_DTS, 'utf8') : '';
+const TESTING = readFileSync(new URL('./testing.d.ts', import.meta.url), 'utf8');
+const TESTING_NAME = '/__testing__.d.ts';
 const KIT_NAME = '/__gamekit__.d.ts';
 const SCRIPT = /\.(m?js|cjs|jsx|ts|tsx|mts|cts)$/i;
 const PRETTIER = /\.(m?js|cjs|jsx|ts|tsx|mts|cts|json|css|html|md)$/i;
@@ -58,7 +60,8 @@ const JS_ONLY_IGNORED = new Set([7005, 7006, 7008, 7019, 7031, 7034, 7043, 7044,
 function service(files, kit) {
   const names = Object.keys(files).filter(n => SCRIPT.test(n)).map(n => '/' + n.replace(/^\/+/, ''));
   if (kit && KIT) names.push(KIT_NAME);
-  const text = n => n === KIT_NAME ? KIT : files[n.slice(1)];
+  if (Object.keys(files).some(n => /(\.test\.|\.spec\.|(^|\/)tests\/)/.test(n))) names.push(TESTING_NAME);
+  const text = n => n === KIT_NAME ? KIT : n === TESTING_NAME ? TESTING : files[n.slice(1)];
   const host = {
     getScriptFileNames: () => names,
     getScriptVersion: () => '1',
@@ -71,7 +74,8 @@ function service(files, kit) {
     getDefaultLibFileName: o => ts.getDefaultLibFilePath(o),
     fileExists: n => names.includes(n) || ts.sys.fileExists(n),
     readFile: n => names.includes(n) ? text(n) : ts.sys.readFile(n),
-    readDirectory: ts.sys.readDirectory, directoryExists: ts.sys.directoryExists, getDirectories: ts.sys.getDirectories,
+    readDirectory: ts.sys.readDirectory, getDirectories: ts.sys.getDirectories,
+    directoryExists: d => names.some(n => n.startsWith(d.replace(/\/?$/, '/'))) || ts.sys.directoryExists(d),  // the project's folders exist only in memory
   };
   return { ls: ts.createLanguageService(host, ts.createDocumentRegistry()), names };
 }
@@ -84,7 +88,7 @@ function where(sf, start) {
 function typeDiagnostics(files, kit) {
   const { ls, names } = service(files, kit), out = [];
   for (const n of names) {
-    if (n === KIT_NAME) continue;
+    if (n === KIT_NAME || n === TESTING_NAME) continue;
     const isJs = /\.(m?js|cjs|jsx)$/i.test(n);
     const sf = ls.getProgram().getSourceFile(n);
     for (const d of [...ls.getSyntacticDiagnostics(n), ...ls.getSemanticDiagnostics(n)]) {
@@ -106,7 +110,7 @@ const RULES = {
   'eqeqeq': ['warn', 'smart'],
   'no-eval': 'error', 'no-implied-eval': 'error', 'no-new-func': 'error',
 };
-const LANG = { ecmaVersion: 2022, sourceType: 'script', globals: { ...globals.browser, GameKit: 'readonly' } };
+const LANG = { ecmaVersion: 2022, sourceType: 'script', globals: { ...globals.browser, GameKit: 'readonly', test: 'readonly', expect: 'readonly', assert: 'readonly' } };
 function lint(files) {
   const out = [];
   for (const [name, text] of Object.entries(files)) {
@@ -116,7 +120,7 @@ function lint(files) {
       ? [{ files: ['**/*'], languageOptions: { ...LANG, sourceType: 'module', parser: tseslint.parser },
            plugins: { '@typescript-eslint': tseslint.plugin },
            rules: { ...RULES, 'no-unused-vars': 'off', '@typescript-eslint/no-unused-vars': RULES['no-unused-vars'] } }]
-      : [{ files: ['**/*'], languageOptions: { ...LANG, sourceType: /\.mjs$/i.test(name) ? 'module' : 'script' }, rules: RULES }];
+      : [{ files: ['**/*'], languageOptions: { ...LANG, sourceType: /\.mjs$/i.test(name) || /^\s*(import|export)\s/m.test(text) ? 'module' : 'script' }, rules: RULES }];
     config[0].linterOptions = { reportUnusedDisableDirectives: 'error' };  // a disable comment that hides nothing is an error too
     for (const m of linter.verify(text, config, name)) {
       const lines = text.split('\n');
