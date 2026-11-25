@@ -121,19 +121,32 @@ def review(set_name, k, model_name="current", show=print):
 
 # ---- scorers -------------------------------------------------------------------------------------------------
 
-def score_game_requests(items, model_name, details=False):
-    """The game AI in use: share of the expected fields it got right; 'ask' tasks are reported apart until the
-    orchestrator can ask questions (Phase 3)."""
+def _answers(requests, model_name):
+    """The settings each model gives for each request: today's game AI ("current" or a .pt file), or a release
+    ("release:<id>", run in llama.cpp exactly as it will be used)."""
+    if not requests: return []
+    if model_name.startswith("release:"):
+        from . import release
+        from .phase0 import tasks as T
+        man = json.load(open(os.path.join(release.DIR, model_name[8:], "release.json")))
+        with release._server_for(man, "game_design") as srv:
+            return [T.parse_recipe(srv.chat([{"role": "system", "content": T.RECIPE_SYSTEM}, {"role": "user", "content": r}],
+                                            max_tokens=200, grammar=T.recipe_grammar(), thinking=False)[0]) for r in requests]
     from .generate import load, decode
     from .recipe import OUT_FIELDS
     import torch
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model, tok, _ = load("models/current.pt" if model_name == "current" else model_name, dev)
+    return [{f: p[f][0] for f in OUT_FIELDS} for p in decode(model, tok, requests, dev)]
+
+
+def score_game_requests(items, model_name, details=False):
+    """Share of the expected fields the model got right; 'ask' tasks are reported apart until the orchestrator can
+    ask questions (Phase 3)."""
     scored = [it for it in items if "expect" in it]
-    preds = decode(model, tok, [it["request"] for it in scored], dev) if scored else []
+    preds = _answers([it["request"] for it in scored], model_name)
     hit = total = full = 0; out = []
-    for it, p in zip(scored, preds):
-        rec = {f: p[f][0] for f in OUT_FIELDS}
+    for it, rec in zip(scored, preds):
         h = sum(rec.get(f) == v for f, v in it["expect"].items())
         hit += h; total += len(it["expect"]); full += h == len(it["expect"])
         out.append({f: rec.get(f) for f in it["expect"]})
