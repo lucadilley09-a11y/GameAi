@@ -4,67 +4,116 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-/* LOOK: like the Claude Code terminal. Dark, one monospace font, coral accent, ● for replies,
-   ⎿ for details, a rounded input box with hints under it. The game screen sits on the right
-   (or in its own window with /game pop). */
-:root{color-scheme:dark;--bg:#141413;--panel:#1c1c1b;--line:#3a3a38;--ink:#ecebe6;--dim:#8f8d86;--acc:#d97757;--ok:#7fbf7a;--warn:#e3b35c;--bad:#e5746f;--sel:#b9a3f2}
-*{box-sizing:border-box;min-width:0}
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 "Cascadia Mono","JetBrains Mono",Consolas,ui-monospace,monospace;overflow:hidden}
-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,46%);height:100vh}
-body.nogame main{grid-template-columns:minmax(0,1fr)}body.nogame .screen{display:none}
-@media(max-width:900px){body{overflow:auto}main{grid-template-columns:minmax(0,1fr);height:auto}.term{height:100vh}}
-.term{display:flex;flex-direction:column;overflow:hidden;padding:10px 18px 8px}
-#log{flex:1;overflow-y:auto;padding:4px 2px 8px;white-space:pre-wrap;word-break:break-word;scrollbar-color:#3a3a38 transparent}
-#log>div{position:relative;padding-left:2ch;margin:0 0 .7em}
-#log>div.a::before,#log>div.w::before,#log>div.e::before{content:'●';position:absolute;left:0}
-#log>div.a::before{color:var(--ink)}#log>div.w::before{color:var(--warn)}#log>div.e::before{color:var(--bad)}
-#log>div.d{margin-top:-.55em;padding-left:5ch}#log>div.d::before{content:'⎿';position:absolute;left:2ch;color:var(--dim)}
-#log>div.u{padding-left:0;color:var(--dim)}
-#log>div.raw{padding-left:0}#log>div.raw::before{content:none}
-.a,.u{color:var(--ink)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}.k{color:var(--acc)}.ok{color:var(--ok)}
-.welcome{border:1px solid var(--acc);border-radius:8px;padding:10px 14px;display:inline-block;max-width:100%}
-.welcome b{color:var(--acc)}
-pre.ban{color:var(--acc);margin:0 0 10px;font:inherit;font-size:12px;line-height:1.1;white-space:pre}
-.menu{display:flex;flex-direction:column;margin:6px 0 2px}
-.menu button{all:unset;cursor:pointer;padding:1px 0 1px 2ch;position:relative;color:var(--ink)}
-.menu button.sel{color:var(--sel)}.menu button.sel::before{content:'❯';position:absolute;left:0}
-.menu button:hover{color:var(--sel)}
-table{border-collapse:collapse;margin:2px 0}td{padding:0 3ch 0 0;vertical-align:top}td:first-child{white-space:nowrap}
-#spin{color:var(--acc);min-height:1.55em;padding-left:0;display:none}#spin.on{display:block}#spin .d{color:var(--dim)}
-.box{border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;gap:1ch;padding:6px 12px}
-.box:focus-within{border-color:#6b6a65}
-.box b{color:var(--ink);font-weight:400}
-#in{flex:1;background:transparent;border:0;color:var(--ink);font:inherit;outline:none;min-height:26px}
-#in::placeholder{color:#6b6a65}
-.foot{display:flex;justify-content:space-between;gap:2ch;color:var(--dim);font-size:12.5px;padding:4px 4px 0;flex-wrap:wrap}
-.prog{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 8px;display:none}.prog.on{display:block}
-.screen{border-left:1px solid var(--line);display:flex;flex-direction:column;padding:10px 18px 12px;background:var(--panel)}
-.bar{display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:12.5px;margin-bottom:8px}
-.bar span b{color:var(--acc);font-weight:400}
-.bar button{all:unset;cursor:pointer;color:var(--dim);padding:2px 6px;border:1px solid var(--line);border-radius:6px;margin-left:6px}
-.bar button:hover,.bar button:focus-visible{color:var(--ink);border-color:var(--acc)}
+/* LOOK: a code editor (like VS Code). Title bar, side bar with your games and your AI, the game and the
+   learning graph as editor tabs, the terminal as the bottom panel, and a blue status bar. */
+:root{color-scheme:dark;--bg:#1e1e1e;--side:#252526;--act:#333333;--tab:#2d2d2d;--line:#2b2b2b;--line2:#3c3c3c;--ink:#cccccc;--hi:#e7e7e7;--dim:#858585;--acc:#4fc1ff;--blue:#0078d4;--ok:#89d185;--warn:#cca700;--bad:#f48771;--sel:#c586c0;--ui:"Segoe UI",system-ui,-apple-system,sans-serif;--mono:"Cascadia Code","JetBrains Mono",Consolas,ui-monospace,monospace}
+*{box-sizing:border-box;min-width:0}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--ui);overflow:hidden;display:grid;grid-template-rows:30px minmax(0,1fr) 22px;height:100vh}
+.title{background:#181818;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px;color:var(--dim);font-size:12px;user-select:none}
+.title b{color:var(--ink);font-weight:400}.title .logo{color:var(--acc);margin-right:8px}
+.work{display:grid;grid-template-columns:48px 230px minmax(0,1fr);min-height:0}
+body.noside .work{grid-template-columns:48px minmax(0,1fr)}body.noside .side{display:none}
+.actbar{background:var(--act);display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:4px}
+.actbar button{all:unset;cursor:pointer;width:48px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-left:2px solid transparent}
+.actbar button:hover,.actbar button.on{color:var(--hi)}.actbar button.on{border-left-color:var(--hi)}
+.actbar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.side{background:var(--side);border-right:1px solid var(--line);overflow-y:auto;font-size:13px}
+.side h3{margin:0;padding:10px 20px 6px;font:11px var(--ui);letter-spacing:.06em;color:var(--dim);font-weight:400}
+.sec{padding:6px 0 4px}.sec>.hd{padding:2px 12px;font-size:11px;font-weight:700;color:var(--ink);letter-spacing:.03em}
+.item{display:flex;gap:6px;padding:2px 12px 2px 22px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.item:hover{background:#2a2d2e}.item.on{background:#37373d}.item .ic{color:var(--acc);flex:none}
+.kv{padding:1px 12px 1px 22px;display:flex;justify-content:space-between;gap:8px;color:var(--dim)}.kv b{color:var(--ink);font-weight:400}
+.main{display:grid;grid-template-rows:minmax(0,1fr) 6px var(--panel,42%);min-height:0}
+body.nogame .main{grid-template-rows:0 0 minmax(0,1fr)}body.nogame .editor,body.nogame .split{display:none}
+.editor{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.tabs{display:flex;background:#252526;height:35px;flex:none;overflow-x:auto;scrollbar-width:none}
+.tab{all:unset;cursor:pointer;display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--tab);color:var(--dim);border-right:1px solid var(--line);border-top:1px solid transparent;font-size:13px;white-space:nowrap}
+.tab.on{background:var(--bg);color:var(--hi);border-top-color:var(--blue)}.tab .x{opacity:.6;padding:0 2px}.tab .x:hover{opacity:1}
+.tab .ic{color:var(--acc)}.tab .badge{width:7px;height:7px;border-radius:50%;background:var(--acc);display:none}.tab.busy .badge{display:block}
+.tabs .sp{flex:1}.tabs .act{all:unset;cursor:pointer;color:var(--dim);padding:0 10px;font-size:12px;display:flex;align-items:center}.tabs .act:hover{color:var(--hi)}
+.crumb{color:var(--dim);font-size:12px;padding:3px 16px;border-bottom:1px solid var(--line);flex:none}
+.pane{flex:1;min-height:0;display:none;padding:10px 16px}.pane.on{display:flex;flex-direction:column}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
-canvas{display:block;width:100%;max-height:100%;aspect-ratio:4/3;object-fit:contain;border-radius:6px;background:#000;border:1px solid var(--line)}
-canvas:focus{outline:none;border-color:var(--acc)}
-.hint{color:var(--dim);font-size:12.5px;margin-top:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+canvas{display:block;max-width:100%;max-height:100%;aspect-ratio:4/3;background:#000;border:1px solid var(--line2)}
+canvas:focus{outline:1px solid var(--blue)}
+.hint{color:var(--dim);font-size:12px;padding-top:6px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.split{background:var(--bg);border-top:1px solid var(--line);cursor:row-resize}.split:hover{background:var(--blue)}
+.panel{display:flex;flex-direction:column;min-height:0;background:var(--bg);border-top:1px solid var(--line2)}
+.ptabs{display:flex;gap:18px;padding:0 20px;height:35px;align-items:center;font-size:11px;letter-spacing:.04em;flex:none}
+.ptabs span{color:var(--dim);padding:8px 0}.ptabs span.on{color:var(--hi);border-bottom:1px solid var(--hi)}
+.term{flex:1;display:flex;flex-direction:column;min-height:0;padding:0 20px 8px;font:13.5px/1.55 var(--mono)}
+#log{flex:1;overflow-y:auto;white-space:pre-wrap;word-break:break-word;scrollbar-color:#424242 transparent;padding:2px 0 6px}
+#log>div{position:relative;padding-left:2ch;margin:0 0 .6em}
+#log>div.a::before,#log>div.w::before,#log>div.e::before{content:'●';position:absolute;left:0}
+#log>div.a::before{color:var(--acc)}#log>div.w::before{color:var(--warn)}#log>div.e::before{color:var(--bad)}
+#log>div.d{margin-top:-.5em;padding-left:5ch}#log>div.d::before{content:'⎿';position:absolute;left:2ch;color:var(--dim)}
+#log>div.u{padding-left:0;color:var(--dim)}#log>div.raw{padding-left:0}
+.a,.u{color:var(--ink)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}.k{color:var(--acc)}.ok{color:var(--ok)}
+.welcome{border:1px solid var(--line2);padding:10px 14px;display:inline-block;max-width:100%}.welcome b{color:var(--acc);font-weight:400}
+.menu{display:flex;flex-direction:column;margin:6px 0 2px}
+.menu button{all:unset;cursor:pointer;padding:1px 0 1px 2ch;position:relative;color:var(--ink);font:inherit}
+.menu button.sel{color:var(--sel)}.menu button.sel::before{content:'❯';position:absolute;left:0}.menu button:hover{color:var(--sel)}
+table{border-collapse:collapse;margin:2px 0}td{padding:0 3ch 0 0;vertical-align:top}td:first-child{white-space:nowrap}
+#spin{color:var(--acc);min-height:1.55em;display:none}#spin.on{display:block}
+.box{display:flex;align-items:center;gap:1ch;border:1px solid var(--line2);padding:4px 10px;background:#181818}
+.box:focus-within{border-color:var(--blue)}.box b{color:var(--ok);font-weight:400}
+#in{flex:1;background:transparent;border:0;color:var(--hi);font:inherit;outline:none;min-height:24px}#in::placeholder{color:#6a6a6a}
+#prog{display:none;overflow-y:auto}#prog.on{display:block}
+#gtitle{color:var(--hi);font-size:14px;margin-bottom:6px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:4px 0 6px;font-size:12px;color:var(--dim)}
+.legend label{display:flex;align-items:center;gap:5px;cursor:pointer}.legend i{width:14px;height:0;border-top:2px solid;display:inline-block}
+.legend input{margin:0;accent-color:var(--blue)}
+#ptext{color:var(--dim);font:12.5px/1.55 var(--mono);margin-top:4px}
+.status{background:var(--blue);color:#fff;display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:0 6px;white-space:nowrap;overflow:hidden}
+.status span{padding:0 8px}.status .l,.status .r{display:flex;overflow:hidden}
 .stub{display:none}
-body.drag .term{outline:2px dashed var(--acc);outline-offset:-6px}
+body.drag .term{outline:1px dashed var(--acc);outline-offset:-4px}
+@media(max-width:900px){.work{grid-template-columns:minmax(0,1fr)!important}.actbar,.side{display:none}}
 </style></head><body>
-<main>
- <section class="term" aria-label="Terminal">
-  <div id="log" role="log" aria-live="polite"></div>
-  <div class="prog" id="prog"><div id="gtitle" class="k"></div><svg id="graph" viewBox="0 0 600 170" style="width:100%;height:150px;display:block"></svg><div id="ptext" class="d"></div></div>
-  <div id="spin"></div>
-  <div class="box"><b>&gt;</b><input id="in" autocomplete="off" spellcheck="false" placeholder='Describe a game, like "a ninja in a spooky dungeon"' aria-label="Terminal input"></div>
-  <div class="foot"><span>/help for commands · /game to show or hide the game · / to type a command</span><span id="mode">starting…</span></div>
+<header class="title"><span><span class="logo">◆</span><b>Game AI</b> — your own game-making AI</span><span id="titleR">Terminal · Game · Learning</span></header>
+<div class="work">
+ <nav class="actbar" aria-label="Views">
+  <button id="aGames" class="on" title="Your games and your AI (toggle the side bar)" aria-label="Side bar"><svg viewBox="0 0 24 24"><path d="M4 5h6l2 2h8v12H4z"/></svg></button>
+  <button id="aGame" title="Game" aria-label="Game"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="11" rx="3"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M18 13.5h.01"/></svg></button>
+  <button id="aGraph" title="Learning graph" aria-label="Learning graph"><svg viewBox="0 0 24 24"><path d="M4 19h16M5 15l4-5 4 3 6-7"/></svg></button>
+  <button id="aHelp" title="Commands (/help)" aria-label="Help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg></button>
+ </nav>
+ <aside class="side" aria-label="Side bar">
+  <h3>EXPLORER</h3>
+  <div class="sec"><div class="hd">⌄ YOUR GAMES</div><div id="sbGames"><div class="kv">None yet. Describe one below.</div></div></div>
+  <div class="sec"><div class="hd">⌄ YOUR AI</div><div id="sbAI"><div class="kv">Loading…</div></div></div>
+  <div class="sec"><div class="hd">⌄ LEARNING</div><div id="sbLearn"><div class="kv">Off · type /learn on</div></div></div>
+ </aside>
+ <section class="main">
+  <div class="editor">
+   <div class="tabs" role="tablist">
+    <button class="tab on" id="tGame" role="tab"><span class="ic">▶</span><span id="gname">game.html</span></button>
+    <button class="tab" id="tGraph" role="tab"><span class="ic">📈</span>learning.graph<span class="badge"></span></button>
+    <span class="sp"></span>
+    <button class="act" id="popBtn" title="Open the game in its own window">⧉ own window</button>
+    <button class="act" id="hideBtn" title="Hide the editor (/game brings it back)">✕</button>
+   </div>
+   <div class="pane on" id="pGame">
+    <div class="stage"><canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas></div>
+    <div class="hint"><span>Click the game, then arrows or WASD to move</span><span>R: play again · / to type</span></div>
+   </div>
+   <div class="pane" id="pGraph">
+    <div id="prog"><div id="gtitle"></div><div class="legend" id="legend"></div><svg id="graph" viewBox="0 0 600 190" style="width:100%;max-width:860px;height:auto;display:block"></svg><svg id="graph2" viewBox="0 0 600 70" style="width:100%;max-width:860px;height:auto;display:block"></svg><div id="ptext"></div></div>
+    <div id="noprog" class="d" style="padding:20px 0">Nothing to show yet. Type <span class="k">/learn on</span> to start always-on learning, or <span class="k">/train</span> to train an AI.</div>
+   </div>
+  </div>
+  <div class="split" id="split" title="Drag to resize"></div>
+  <div class="panel">
+   <div class="ptabs"><span>PROBLEMS</span><span>OUTPUT</span><span class="on">TERMINAL</span></div>
+   <section class="term" aria-label="Terminal">
+    <div id="log" role="log" aria-live="polite"></div>
+    <div id="spin"></div>
+    <div class="box"><b>gameai ❯</b><input id="in" autocomplete="off" spellcheck="false" placeholder='Describe a game, like "a ninja in a spooky dungeon"' aria-label="Terminal input"></div>
+   </section>
+  </div>
  </section>
- <section class="screen" aria-label="Game">
-  <div class="bar"><span><b>●</b> <span id="gname">Game</span></span><span><button id="popBtn" title="Open the game in its own window">⧉ own window</button><button id="hideBtn" title="Hide the game (/game brings it back)">✕</button></span></div>
-  <div class="stage"><canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas></div>
-  <div class="hint"><span>Click the game, then arrows or WASD to move</span><span>R: play again · / to type</span></div>
- </section>
-</main>
+</div>
+<footer class="status"><span class="l"><span id="sbVer">⎇ main</span><span id="sbJob"></span></span><span class="r"><span id="mode">starting…</span><span>/help</span></span></footer>
 <button id="editBtn" class="stub"></button><button id="restartBtn" class="stub"></button>
 <input id="files" type="file" multiple accept=".json,.bin" class="stub">
 <script>/*BUILTIN*/</script>
@@ -89,7 +138,7 @@ const LABEL={none:'none (peaceful)',exit:'find the exit',survive:'survive'};
 let askOn=store.get('gameai.ask',true),lastGame=null,pending=null,menu=null,pop=null;
 
 let API=null,lastWhere='';
-function useAI(ai,where){
+function useAI(ai,where){setTimeout(()=>sideAI(API&&API.app?API:null));
  AI=ai;FN=ai.fields;F=Object.fromEntries(FN.map((f,i)=>[f,Object.fromEntries(ai.options[i].filter(v=>v!=='auto').map(v=>[v,1]))]));trained=true;
  say(`Ready. Describe a game you want, like "a ninja in a spooky dungeon". Type /help for more.`,'a');lastWhere=where;
 }
@@ -106,11 +155,13 @@ async function boot(){
   else say(API.note?'Your AI needs one retrain for the new game rules. Type /train (about 10-30 minutes). Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
   if(API.fresh)say(`Right now it gets about ${Math.floor(API.fresh.exact*1000)/10}% of game ideas exactly right.`,'d');
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
+   if(st){sideAI(st);sideLearn(st)}
    if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
    if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say(st.training&&st.learning?'An update is ready. Learning pauses after this round, installs it, and carries on by itself.':'An update is ready. It installs by itself when the current training finishes.','d')}
    if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}},5000)}
   if(API.update_msg&&API.version!=='dev')say(`Version ${esc(API.version)}: ${esc(API.update_msg)}`,'d');
+  sideAI(API);sideLearn(API);
   if(API.training)watch();else showLearning('').then(ok=>{if(ok)$('prog').classList.add('on')});
   return;
  }
@@ -148,42 +199,66 @@ const SPIN='·✢✳✶✻✽✻✶✳✢';
 function spin(msg){spinMsg=msg;const el=$('spin');el.classList.add('on');if(spinT)return;spinT0=Date.now();let i=0;
  spinT=setInterval(()=>{el.innerHTML=`${SPIN[i++%SPIN.length]} ${esc(spinMsg)}… <span class="d">(${Math.round((Date.now()-spinT0)/1000)}s)</span>`},120)}
 function unspin(){clearInterval(spinT);spinT=null;$('spin').classList.remove('on')}
+const SERIES=[ // what each line means (shown in the legend)
+ {k:'y',name:'Overall test score',c:'#4fc1ff',w:2.5},
+ {k:'practice',name:'Practice test (new requests)',c:'#c586c0',w:1.5,dash:1},
+ {k:'gold',name:'Hand-checked tricky requests',c:'#dcdcaa',w:1.5},
+ {k:'natural',name:'Real-person wording',c:'#4ec9b0',w:1.5},
+ {k:'yours',name:'Your corrections',c:'#ce9178',w:1.5}];
+let graphOff=store.get('gameai.graphoff',{});
 function drawGraph(pts,opt){
- // pts: [{x, y, y2?, dot?}]  y = share fully right (0-1)
- const W=600,H=170,L=44,R=12,T=12,B=26,g=$('graph');if(!pts.length){g.innerHTML='';return}
- const ys=pts.flatMap(p=>[p.y,p.y2,p.c]).filter(v=>v!=null),lo=Math.max(0,Math.floor((Math.min(...ys)*100-1))/100),hi=Math.min(1,Math.ceil(Math.max(...ys)*100+.5)/100);
+ // pts: [{x, y, practice?, gold?, natural?, yours?, c?, dot?, params?}]  scores are 0-1
+ const W=600,H=190,L=44,R=12,T=12,B=24,g=$('graph');if(!pts.length){g.innerHTML='';$('graph2').innerHTML='';return}
+ const on=SERIES.filter(s=>!graphOff[s.k]&&pts.some(p=>p[s.k]!=null));
+ const ys=pts.flatMap(p=>[...on.map(s=>p[s.k]),on.some(s=>s.k==='y')?p.c:null]).filter(v=>v!=null);if(!ys.length)ys.push(0,1);
+ const lo=Math.max(0,Math.floor(Math.min(...ys)*100-1)/100),hi=Math.min(1,Math.ceil(Math.max(...ys)*100+.5)/100);
  const xs=pts.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs,x0+1e-9);
  const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo||1))*(H-T-B);
- const line=(k,c,w,dash)=>{const q=pts.filter(p=>p[k]!=null);return q.length>1?`<polyline points="${q.map(p=>X(p.x)+','+Y(p[k])).join(' ')}" fill="none" stroke="${c}" stroke-width="${w}" ${dash?'stroke-dasharray="4 4"':''}/>`:''};
- let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#3a3a38"/><text x="${L-6}" y="${Y(v)+4}" fill="#8f8d86" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
- const tries=pts.filter(p=>p.c!=null&&!p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.c)}" r="3" fill="none" stroke="#8f8d86"/>`).join('');  // rounds the safety net didn't use
- const dots=pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#d97757"/>`).join('');
+ const line=s=>{const q=pts.filter(p=>p[s.k]!=null);if(!q.length)return'';if(q.length===1)return`<circle cx="${X(q[0].x)}" cy="${Y(q[0][s.k])}" r="3" fill="${s.c}"/>`;return`<polyline points="${q.map(p=>X(p.x)+','+Y(p[s.k])).join(' ')}" fill="none" stroke="${s.c}" stroke-width="${s.w}" ${s.dash?'stroke-dasharray="4 4"':''} stroke-linejoin="round"/>`};
+ let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2b2b2b"/><text x="${L-6}" y="${Y(v)+4}" fill="#858585" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
+ const showY=on.some(s=>s.k==='y');
+ const tries=showY?pts.filter(p=>p.c!=null&&!p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.c)}" r="3" fill="none" stroke="#858585"/>`).join(''):'';
+ const dots=showY?pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#4fc1ff"/>`).join(''):'';
  const lastP=pts.at(-1);
- g.innerHTML=ticks+line('y2','#8f8d86',1.5,true)+line('y','#d97757',2.5)+tries+dots+
-  `<text x="${L}" y="${H-6}" fill="#8f8d86" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#8f8d86" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
-  `<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#d97757" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`;
+ g.innerHTML=ticks+on.slice().reverse().map(line).join('')+tries+dots+
+  `<text x="${L}" y="${H-6}" fill="#858585" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#858585" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
+  (showY?`<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#4fc1ff" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`:'');
+ // size of the AI (parameters): its own small chart, because it only changes when you train a bigger model
+ const ps=pts.filter(p=>p.params);const g2=$('graph2');
+ if(!ps.length){g2.innerHTML='';return}
+ const pm=ps.map(p=>p.params/1e6),phi=Math.max(...pm)*1.15,plo=0,H2=70,Y2=v=>8+(1-(v-plo)/(phi-plo||1))*(H2-26);
+ let path='';ps.forEach((p,i)=>{const x=X(p.x),y=Y2(p.params/1e6);path+=i?` H${x} V${y}`:`M${x} ${y}`});
+ g2.innerHTML=`<text x="${L-6}" y="14" fill="#858585" font-size="11" text-anchor="end">size</text><line x1="${L}" x2="${W-R}" y1="${H2-18}" y2="${H2-18}" stroke="#2b2b2b"/>`+
+  `<path d="${path} H${X(lastP.x)}" fill="none" stroke="#b5cea8" stroke-width="2"/><text x="${L}" y="${H2-4}" fill="#858585" font-size="11">Size of your AI: ${(ps.at(-1).params/1e6).toFixed(2)} million parameters (how much it can hold; goes up when you /train a bigger one)</text>`;
 }
+function legend(rows){
+ const have=SERIES.filter(s=>rows.some(r=>(s.k==='y'?r.exact:r[s.k])!=null));
+ $('legend').innerHTML=have.map(s=>`<label><input type="checkbox" data-k="${s.k}" ${graphOff[s.k]?'':'checked'}><i style="border-color:${s.c};${s.dash?'border-top-style:dashed':''}"></i>${s.name}</label>`).join('')+'<label style="cursor:default"><i style="border:0;width:8px;height:8px;border-radius:50%;background:#4fc1ff"></i>switched to a better version</label><label style="cursor:default"><i style="border:1px solid #858585;width:8px;height:8px;border-radius:50%"></i>tried, not better</label>';
+ $('legend').querySelectorAll('input').forEach(c=>c.onchange=()=>{graphOff[c.dataset.k]=!c.checked;store.set('gameai.graphoff',graphOff);showLearning(lastStatusLine)});
+}
+let lastStatusLine='';
 async function showLearning(statusLine){
+ lastStatusLine=statusLine||'';
  let rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]);
  if(rows.some(r=>'frozen' in r))rows=rows.filter(r=>'frozen' in r);  // the newer, fuller test: don't mix it with older scores
  if(!rows.length)return false;
  const t0=rows[0].time,hrs=(rows.at(-1).time-t0)/3600,gain=(rows.at(-1).exact-rows[0].exact)*100,ups=rows.filter((r,i)=>i&&r.promoted).length;
  $('graph').style.display=''; $('gtitle').innerHTML='How smart your AI is';
- drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.practice??r.natural??r.typo,c:r.candidate,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
- const L=rows.at(-1);$('ptext').innerHTML=`Orange line: its test score, how often it gets a game idea exactly right (all tests together, including the hand-checked ones and your corrections). Dashed: its practice test on brand-new requests each round. Filled dot: it got smarter and switched to the new version. Hollow dot: a new version it tried but didn't use (not clearly better), so the line stays flat until one wins.${L.practice!=null?`<br>Last round: ${(L.practice*100).toFixed(1)}% right on its practice test; it drilled ${L.lessons} lessons${L.weakest&&L.weakest.length?`, mostly on ${esc(L.weakest.join(', '))}`:''}. ${L.promoted?'The new version was better, so it switched.':'The new version wasn\'t clearly better, so it kept the old one'+(L.why?` (${esc(L.why)})`:'')+'.'}`:''}<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
+ legend(rows);drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,practice:r.practice,gold:r.gold,natural:r.natural,yours:r.yours,params:r.params,c:r.candidate,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
+ const L=rows.at(-1);$('ptext').innerHTML=`Every line is how often it gets a game idea exactly right on one kind of test; the blue line is all of them together. Tick boxes above to show or hide lines. The blue line only moves when a new version wins, because only then is your AI actually smarter.${L.practice!=null?`<br>Last round: ${(L.practice*100).toFixed(1)}% right on its practice test; it drilled ${L.lessons} lessons${L.weakest&&L.weakest.length?`, mostly on ${esc(L.weakest.join(', '))}`:''}. ${L.promoted?'The new version was better, so it switched.':'The new version wasn\'t clearly better, so it kept the old one'+(L.why?` (${esc(L.why)})`:'')+'.'}`:''}<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
  const tn=rows.at(-1).teacher;if(tn)$('ptext').innerHTML+=`<br>The teacher has written ${tn} real-person examples so far, and each round learns from all of them.`;
  return true;
 }
 async function watch(){
- if(watching)return;watching=true;$('prog').classList.add('on');
+ if(watching)return;watching=true;$('prog').classList.add('on');if(!lastGame)showTab('graph');
  while(true){
   const j=await fetch('api/progress').then(r=>r.json()).catch(()=>null);if(!j)break;
   const pct=j.total?Math.round(j.step/j.total*100):0,st=j.stage||'',nice=/practice|training data/i.test(st)?'writing new practice questions':/learning|Training/.test(st)?`studying (${pct}%)`:/test/i.test(st)?'taking its test':/browser/i.test(st)?'packing up':st?'getting ready':'starting',rd=(st.match(/Round (\d+)/)||[])[1],now=`Right now: ${rd?'round '+rd+', ':''}${nice}`;
   spin(j.kind==='teacher'?'The teacher is writing examples':j.kind==='learn'?'Learning':'Training');
-  if(j.kind==='learn'){$('graph').style.display='';if(!await showLearning(now)){$('gtitle').textContent='Always-on learning';$('ptext').innerHTML=now}}
+  if(j.kind==='learn'){$('sbJob').textContent='● learning';$('graph').style.display='';if(!await showLearning(now)){$('gtitle').textContent='Always-on learning';$('ptext').innerHTML=now}}
   else{
    // text bar for training, testing and the teacher: overall percent done and time left
-   $('graph').style.display='none';$('graph').innerHTML='';
+   $('graph').style.display='none';$('graph').innerHTML='';$('graph2').innerHTML='';$('legend').innerHTML='';
    const stg=(st.match(/^(\d)\/4/)||[])[1],frac=j.total?j.step/j.total:0;
    let p,label;
    if(j.kind==='teacher'){p=frac;label=`The teacher is writing examples: ${j.step} of ${j.total} kept${j.loss!=null?` (${Math.round(j.loss*100)}% pass its self-check)`:''}`}
@@ -194,8 +269,9 @@ async function watch(){
    const W=32,full=p==null?0:Math.round(Math.min(1,p)*W),bar=p==null?'░'.repeat(W):'█'.repeat(full)+'░'.repeat(W-full);
    $('gtitle').textContent=j.kind==='teacher'?'Teacher':j.kind==='job'&&stg?'Training a new AI from scratch':'Working';
    $('ptext').innerHTML=`<span class="k">${bar}</span>  <span class="u">${p==null?'…':Math.floor(Math.min(1,p)*100)+'%'}</span>${esc(left)}<br>${esc(label)}${j.kind==='teacher'?`<br><span class="d">${esc((j.log.filter(l=>l.startsWith('kept')).at(-1)||'').replace(/^kept[^e]*e\.g\. /,'latest: '))}</span>`:''}`;
+   $('sbJob').textContent=`${j.kind==='teacher'?'Teacher':label} ${p==null?'…':Math.floor(Math.min(1,p)*100)+'%'}${left}`;
   }
-  if(!j.running){watching=false;unspin();
+  if(!j.running){watching=false;unspin();$('sbJob').textContent='';
    if(j.kind!=='learn')$('prog').classList.remove('on');
    say(j.stopped?'Stopped.':j.ok?'All done.':j.kind==='learn'?'Learning stopped.':'Something went wrong. Send Claude these lines:',j.ok?'a':'w');if(!j.ok&&!j.stopped&&j.kind!=='learn')say(esc(j.log.slice(-8).join('\n')),'d');
    const gl=j.log.find(l=>/Phase 1 gate/.test(l));if(gl&&j.kind!=='learn')say(/PASSED/.test(gl)?'It passed its test and is now your AI.':'It did not pass its test, so your old AI is still in use.','d');
@@ -273,7 +349,7 @@ async function finish(prompt,pred,edit,ms){
   return `<tr><td class="d">${f}</td><td class="${ai?'u':'d'}">${ai?esc(r[f]):`${src[f]==='kept'?'kept':'auto'} → ${esc(r[f])}`}</td><td class="${cls}">${ai?Math.round(c*100)+'%':''}</td></tr>`}).join('');
  lastDetails=`${esc(play.text)}<table>${rows}${(r.rules||[]).map((x,i)=>`<tr><td class="d">rule ${i+1}</td><td class="u">${esc(ruleText(x,r))}</td><td></td></tr>`).join('')}</table>`;
  say(esc(describe(r,src,edit)));say(esc(play.text),'d');if(play.probs.length)say('Heads-up: '+esc(play.probs.join('; '))+'. Try /edit make it easier, or ask again for a new version.','w');say('Click the game to play. Try /edit make it harder, /rate 1-5, /details, or /game pop for its own window.','d');
- $('gname').textContent=`${r.player} · ${r.theme} · ${r.goal}`;if(pop&&!pop.closed)popOut();else showGame(true);
+ $('gname').textContent=`${r.player} · ${r.theme} · ${r.goal}`;rememberGame(lastGame);if(pop&&!pop.closed)popOut();else showTab('game');
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
@@ -286,6 +362,37 @@ function teach(prompt,rec,quiet){
  post('api/correct',{prompt,recipe:rec}).then(r=>{if(!quiet)say(r.ok?`Thanks, saved. Your AI learns from it in the next learning round${r.test?' (this one is kept aside to test it on)':''}.`:esc(r.error||'Could not save that.'),r.ok?'a':'w')});
 }
 function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
+function showTab(t){document.body.classList.remove('nogame');for(const [b,p] of [['tGame','pGame'],['tGraph','pGraph']]){const o=(t==='graph')===(b==='tGraph');$(b).classList.toggle('on',o);$(p).classList.toggle('on',o)}
+ $('aGame').classList.toggle('on',t!=='graph');$('aGraph').classList.toggle('on',t==='graph');if(t==='graph')showLearning(lastStatusLine).then(ok=>{if(ok)$('prog').classList.add('on')})}
+$('tGame').onclick=$('aGame').onclick=()=>showTab('game');$('tGraph').onclick=$('aGraph').onclick=()=>showTab('graph');
+$('aGames').onclick=()=>{document.body.classList.toggle('noside');$('aGames').classList.toggle('on',!document.body.classList.contains('noside'));store.set('gameai.noside',document.body.classList.contains('noside'))};
+$('aHelp').onclick=()=>{command('/help');inp.focus()};
+if(store.get('gameai.noside',false)){document.body.classList.add('noside');$('aGames').classList.remove('on')}
+new MutationObserver(()=>{const on=$('prog').classList.contains('on');$('noprog').style.display=on?'none':''}).observe($('prog'),{attributes:true});
+{let drag=false;$('split').onmousedown=e=>{drag=true;e.preventDefault()};addEventListener('mouseup',()=>{if(drag){drag=false;store.set('gameai.panel',document.body.style.getPropertyValue('--panel'))}});
+ addEventListener('mousemove',e=>{if(!drag)return;const m=document.querySelector('.main').getBoundingClientRect(),h=Math.min(m.height-80,Math.max(120,m.bottom-e.clientY));document.body.style.setProperty('--panel',h+'px')});
+ const ph=store.get('gameai.panel','');if(ph)document.body.style.setProperty('--panel',ph)}
+function sideGames(){
+ const gs=store.get('gameai.games',[]),el=$('sbGames');
+ el.innerHTML=gs.length?gs.map((g,i)=>`<div class="item${lastGame&&lastGame.prompt===g.prompt&&i===0?' on':''}" data-i="${i}" title="${esc(g.prompt)}"><span class="ic">▶</span>${esc(g.prompt)}</div>`).join(''):'<div class="kv">None yet. Describe one below.</div>';
+ el.querySelectorAll('.item').forEach(d=>d.onclick=()=>{const g=gs[+d.dataset.i];lastGame={prompt:g.prompt,r:g.r,edit:false,raw:g.raw||null,corr:null,time:g.time};build(g.r);$('gname').textContent=`${g.r.player} · ${g.r.theme} · ${g.r.goal}`;showTab('game');say('Opened: '+esc(g.prompt),'d');$('game').focus()});
+}
+function rememberGame(g){const gs=store.get('gameai.games',[]).filter(x=>x.prompt!==g.prompt||x.r.seed!==g.r.seed);gs.unshift({prompt:g.prompt,r:g.r,raw:g.raw,time:g.time});store.set('gameai.games',gs.slice(0,15));sideGames()}
+function sideAI(st){
+ const rows=[];if(AI)rows.push(['size',(AI.params/1e6).toFixed(2)+'M parameters']);
+ if(st){rows.push(['runs on',st.gpu||'CPU']);if(st.fresh)rows.push(['gets right',(Math.floor(st.fresh.exact*1000)/10)+'%']);rows.push(['app version',st.version||'dev']);if(st.sharing)rows.push(['Chromebook','shared'])}
+ else rows.push(['runs on','this device']);
+ $('sbAI').innerHTML=rows.map(([k,v])=>`<div class="kv">${k}<b>${esc(String(v))}</b></div>`).join('');
+ if(st)$('sbVer').textContent='⎇ main · '+(st.version||'dev');
+}
+async function sideLearn(st){
+ if(!(API&&API.app)){$('sbLearn').innerHTML='<div class="kv">Needs your PC</div>';return}
+ const rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]),L=rows.at(-1),on=st&&st.learning;
+ $('sbLearn').innerHTML=`<div class="kv">status<b>${on?'learning':'off'}</b></div>`+(L?`<div class="kv">rounds<b>${rows.length}</b></div><div class="kv">score<b>${(L.exact*100).toFixed(2)}%</b></div><div class="kv">switched<b>${rows.filter(r=>r.promoted).length}×</b></div>`:'')+(on?'':'<div class="kv">type /learn on</div>');
+ $('tGraph').classList.toggle('busy',!!(st&&st.training));
+}
+sideGames();
+function showGame_(){}
 async function popOut(){
  if(!lastGame){say('Make a game first.','w');return}
  let url;
@@ -314,7 +421,7 @@ function command(line){
    if(API&&API.app&&+m[1]>=4&&!lastGame.edit&&!lastGame.corr&&lastGame.raw)post('api/rate',{prompt:lastGame.prompt,recipe:lastGame.raw,rating:+m[1]}).then(r=>{if(r.kept)say('It will also learn that it understood this request right.','d')});break}
   case '/train':if(needApp())break;post('api/train',{size:arg||'small'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(`Training a ${esc(arg||'small')} AI from scratch. You can keep making games meanwhile.`);watch()}});break;
   case '/learn':if(needApp())break;post('api/learn',{on:arg!=='off'}).then(r=>{if(!r.ok)say(esc(r.error),'w');else if(r.stopping)say('Stopping after the current round finishes.','d');else{say('Always-on learning started. A teacher AI writes new real-person examples at the same time, and each round learns from all of them. Keep making games; it switches to each better version by itself.');watch()}});break;
-  case '/graph':if(needApp())break;$('prog').classList.add('on');$('graph').style.display='';showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
+  case '/graph':if(needApp())break;showTab('graph');$('prog').classList.add('on');$('graph').style.display='';showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
   case '/test':if(needApp())break;post('api/test').then(r=>{if(!r.ok)say(esc(r.error),'w');else watch()});break;
   case '/runs':if(needApp())break;fetch('api/runs').then(r=>r.json()).then(rs=>say(rs.length?'<table>'+rs.map(r=>`<tr><td class="d">${esc(r.id)}</td><td>${r.exact!=null?(r.exact*100).toFixed(2)+'%':''}</td><td class="d">${r.promoted?'promoted':''}</td></tr>`).join('')+'</table>':'No runs yet.'));break;
   case '/save':if(!lastGame){say('Make a game first.','w');break}

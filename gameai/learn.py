@@ -85,9 +85,9 @@ def loop(rnd, hist, teacher):
         best = json.load(open("models/current.json")) if os.path.exists("models/current.json") else last  # the AI in use now
         row = {"round": rnd, "time": time.time(), "exact": best.get("total", best["frozen"]["exact"]), "typo": best["typo"]["exact"],
                "frozen": best["frozen"]["exact"], "gold": (best.get("gold") or {}).get("exact"), "version": best.get("version"),
+               "yours": (best.get("yours") or {}).get("exact"), "params": best.get("params"),
                "practice": practice and practice["practice_score"], "lessons": practice and practice["lessons"],
                "weakest": practice and practice["weakest"], "why": last.get("why"),
-               "natural": (best.get("natural") or {}).get("exact"),
                "candidate": last.get("total", last["frozen"]["exact"]), "promoted": last["promoted"], "teacher": n_teacher}
         with open(hist, "a") as f:
             f.write(json.dumps(row) + "\n")

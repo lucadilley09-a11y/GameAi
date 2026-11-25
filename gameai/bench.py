@@ -133,7 +133,7 @@ def main():
         why = f"overall {gain*100:+.2f} points" + (f", but worse on: {', '.join(drops)}" if drops else "")
     promoted = gate and better
     result = {"checkpoint": a.checkpoint, "train_run": ck.get("run"), "fresh_seed": seed, **res,
-              "fresh": fresh, "total": total(res), "old_total": total(old) if old else None, "why": why,
+              "fresh": fresh, "total": total(res), "params": model.num_params(), "old_total": total(old) if old else None, "why": why,
               "gate_passed": gate, "promoted": promoted}
     if promoted:
         os.makedirs("models", exist_ok=True)
