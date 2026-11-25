@@ -73,6 +73,24 @@ teacher (about 3 GB, no account). Examples are saved as they're written, so you 
 **Learning while it writes:** `/learn on` runs the teacher at the same time. Every learning round learns from all teacher examples so far, so the AI improves as the
 teacher goes. The graph shows how many it has written. The test gains a "real talk" score: how well your AI understands natural wording. Your AI never needs the teacher to run.
 
+## The code track: your AI writes code
+
+A second AI of your own, the **coder**, writes real JavaScript: the "brain" that decides how enemies move.
+`/train coder` trains it (about 10-20 minutes on your GPU). Then, with a game open:
+
+    /code circle around me but run away when I get close
+
+It writes what it understood (for example `spec: near 100: flee else circle`), then the code. Before anything
+runs, each try is safety-checked (only allowed words: no loops, no strings, no functions, nothing outside the
+maths) and run in a sandbox (a separate JavaScript engine with time and memory limits) against a reference for
+what it said it would do, in 40 random situations. Up to 8 tries; the first that works goes into your game, and
+the game is playtested again. If none works it says so and shows its best try.
+
+What it can do so far: chase, flee, circle, keep a distance (100/150/200), zigzag, spiral in, pace left-right or
+up-down, stand still, and "X when you're within 100/150/200, otherwise Y". Five of those combinations are never
+practised, to test whether it can put pieces together in new ways. `python -m gameai.code.coder bench` shows
+how often its code works.
+
 ## Bigger AI
 
 `/train base` trains a 12.7 million parameter AI (about 3x the default 4.5 million), `/train large` 35 million.

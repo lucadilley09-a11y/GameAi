@@ -127,7 +127,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 let F={},FN=[],trained=false,AI=null;
 
 /*ENGINE*/
-window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a),goExplore:(...a)=>goExplore(...a),build:r=>build(r),state:()=>S};  // for automatic tests
+window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a),goExplore:(...a)=>goExplore(...a),build:r=>build(r),state:()=>S,safeBrain:c=>!!safeBrain(c)};  // for automatic tests
 
 const log=$('log'),inp=$('in');
 const say=(html,cls='a')=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};

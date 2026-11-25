@@ -319,12 +319,14 @@ function safeBrain(code){
  const local=new Set();
  for(let i=0;i<T.length;i++){const k=T[i];if(!/^[A-Za-z_]/.test(k))continue;const b=T[i-1];
   if(b==='.'){const o=T[i-2];if(o==='Math'){if(!B_MATH.has(k))return null}else if(T[i-2]==='mem'||(T[i-3]==='e'&&T[i-2]==='.')){if(k.startsWith('_')||k==='constructor'||k==='prototype')return null}else if(!B_PROP.has(k))return null;continue}
-  if(b==='let'||b==='const'||(b===','&&!B_GLOB.has(k)&&!B_KEY.has(k)&&!local.has(k)&&T.slice(0,i).lastIndexOf('let')+T.slice(0,i).lastIndexOf('const')>T.slice(0,i).lastIndexOf(';'))){if(B_GLOB.has(k)||B_KEY.has(k)||k==='window'||k==='this')return null;local.add(k);continue}
+  if(b==='let'||b==='const'||(b===','&&!B_GLOB.has(k)&&!B_KEY.has(k)&&bDeclaring(T,i))){if(B_GLOB.has(k)||B_KEY.has(k)||k==='window'||k==='this')return null;local.add(k);continue}
   if(!B_KEY.has(k)&&!B_GLOB.has(k)&&!local.has(k))return null;
   if(k==='Math'&&T[i+1]!=='.')return null}
  if(!T.includes('return'))return null;
  try{const f=new Function('e','p','t','dist','dir','"use strict";'+code);return f}catch(err){return null}
 }
+function bDeclaring(T,i){ // is T[i] (after a comma) another name in a `let a = 1, b = 2` list? (same as safety.py)
+ let depth=0;for(let j=i-1;j>=0;j--){const x=T[j];if(x===')'||x===']'||x==='}')depth++;else if(x==='('||x==='['||x==='{'){if(!depth)return false;depth--}else if(!depth&&x===';')return false;else if(!depth&&(x==='let'||x==='const'))return true}return false}
 function bDist(a,b){return Math.hypot(b.x-a.x,b.y-a.y)}
 function bDir(a,b){const d=Math.hypot(b.x-a.x,b.y-a.y)||1;return [(b.x-a.x)/d,(b.y-a.y)/d]}
 function placeDoors(r,grid,cells,used){

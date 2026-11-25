@@ -84,9 +84,11 @@ FILL = ["", " please", " lol", " like in pacman", " that would be cool"]
 def say(s, rng):
     if s["kind"] == "near":
         A, B, near = say_atom(s["a"], rng), say_atom(s["b"], rng), rng.choice(NEAR[s["R"]])
-        form = rng.choice(["{A} {N}, otherwise {B}", "{B}, but {A} {N}", "{N} they {A}, otherwise they {B}", "{B} until you're close, then {A}" if s["R"] == 100 else "{B}, and {A} {N}",
-                           "{A} {N} and {B} the rest of the time", "{B}; {A} {N}"])
-        txt = form.format(A=A, B=B, N=near)
+        R = s["R"]
+        until = rng.choice([f"until you're within {R}", f"until you come within {R}", f"until you get within {R}"] + (["until you're close", "until you get close"] if R == 100 else ["until you're nearby"] if R == 150 else ["until you're in range"]))
+        form = rng.choice(["{A} {N}, otherwise {B}", "{B}, but {A} {N}", "{N} they {A}, otherwise they {B}", "{B} {U}, then {A}", "{B} {U} and then {A}",
+                           "{A} {N} and {B} the rest of the time", "{B}; {A} {N}", "{B} but {A} {N}", "{B} normally, {A} {N}", "when you're far away they {B}, {N} they {A}"])
+        txt = form.format(A=A, B=B, N=near, U=until)
     else:
         txt = say_atom(s, rng)
     return (rng.choice(SUBJ) + txt + rng.choice(FILL)).strip()
