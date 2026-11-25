@@ -283,3 +283,19 @@ How the AI gets better at writing code (plan: Phase 4). The autopilot runs it af
 A solution only counts if every visible and hidden test passes, the checkers find no errors, and it doesn't cheat
 (changing the test functions, reaching into the sandbox, exiting early or copying the tests' answers). The 16
 hand-written tasks in `gameai/coding/seed_tasks.py` are validation only and never trained on.
+
+## Project planner and component library
+
+For bigger games, built over many sessions (plan: Phase 4):
+
+- **A plan per project:** the AI writes a design (mechanics, controls, rules, look, sound) and a feature list in
+  build order, each feature with "done when" checks. You can read them in the project's `DESIGN.md` and
+  `FEATURES.md`; decisions made along the way are kept there too.
+- **One tested feature at a time:** each feature comes with its own tests and is applied only if they pass and
+  nothing that worked before breaks. Finished features' tests become regression tests that later features can't
+  change. A feature that fails 4 tries is marked blocked and you're asked; `python -m gameai.planner unblock
+  my_game f3 "your hint"` tries again with your hint.
+- **Picking up later:** each session starts from the plan's summary (goal, design, decisions, done, next).
+  `python -m gameai.planner status my_game`
+- **Component library:** finished features' code becomes checked components (only if their own tests pass, no
+  near-copies), and matching ones are offered to the AI in later projects. `python -m gameai.planner components`

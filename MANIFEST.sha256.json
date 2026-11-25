@@ -1,7 +1,7 @@
 {
 "files": {
 ".gitignore": "ca7b9564994dff94af114ccc0c8e1f2ae4f75e5e81f9aeed2cb973f4eca8f320",
-"README.md": "2a0ec008a057ba6f1a8c258cf5bef850e2fc0f1c74583790a0e5ea84dccadc6e",
+"README.md": "95ba012fe1d493aa0d91889715e756b2e51408d5cf2c2228027096f6b5a8fd2c",
 "docs/RELEASE.md": "48ccecf077f43bfa8dc7a02ae20fe62d688ba0b02bda130cc175785c8f96e50b",
 "docs/gamekit.md": "5e2ae7be9376c2708df9b2234ba5d1d8d03b6a66cb09fa44bc88bca2646f2cba",
 "gameai/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -66,6 +66,11 @@
 "gameai/phase0/qlora.py": "7895d3b14e5370e88770af880204eaaae62f075076bcc6c8b5b8c64550b5a44a",
 "gameai/phase0/runtime.py": "e4c641d481d88250c6eb3fbaf72a4be1b162ab109f905c5bdf8ad2f914eaea18",
 "gameai/phase0/tasks.py": "3969923d639f42e2cede87594ce7f7b112f0b562ddc891f592a5da549bd1ca5b",
+"gameai/planner/__init__.py": "2058f9566c3869f64175a32d509129d587dd0cff6161323c83d3dc5419159579",
+"gameai/planner/__main__.py": "cfcc046848b5dc6a2bafb815d0f3e8c995ea9b112a37a941971e4e1f9562194c",
+"gameai/planner/builder.py": "b44007f573327a22c66840dd70b2095b72c9e3aad932ab96ab65082b77e4e855",
+"gameai/planner/components.py": "44468545d21e68f4d74277c6aedaa69d0d473aa33da77b715a097a7b036c858c",
+"gameai/planner/project.py": "ebd405de5b9294e05a37192cd9f7012241220159e0e95369220f805a2a0b8bbc",
 "gameai/play_template.html": "9518ce10b1d946b53d859d70a4b833dd73b0431cd81233329034cbf98c515052",
 "gameai/recipe.py": "ce8bc24ed5b8c370f555e72b56e175809548f9b1f29c6815949e4a01b34231b7",
 "gameai/registry.py": "70b6dfd1e9311c29db24e3c86f0579d98f2a4715fc0ca1ec1adecc1ad26a7cd2",
@@ -104,6 +109,7 @@
 "tests/test_checks.py": "193419799fceeff4294f4fe9aa1f0d6fc186f1f94fa1d148ec7820f456e76e5e",
 "tests/test_coding.py": "1a5787c1216334f5a9cd6e047dfad163f524d8fb50e480121f0208ec204624cb",
 "tests/test_gamekit.py": "5bd26ab091fbe0697968a33b70c40e3343b720409cba255e4c99a4d093278fa9",
+"tests/test_planner.py": "5e78ed58c5ab9aa5fef66cb747abaf989c9933b61b7454c293ae2d94dbe4b937",
 "tests/test_repair.py": "14ed7e1e80b1483ce94268123c5617c8b2c7c7de171855860466e292e23f4f4c",
 "tests/test_sealed.py": "1f8fd437597a8cf53e98f845df7f6dcfb2dd29222668674cc3f2c7cc6ae1d057",
 "tests/test_updater.py": "0bca4489cbbb3521effc2b2165826b2c1b70246334432bd83ac1f157438c535c",
