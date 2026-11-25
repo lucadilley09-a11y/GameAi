@@ -12,5 +12,6 @@ play/
 for-chromebook/
 export/
 .version
+logs/
 __pycache__/
 *.pyc

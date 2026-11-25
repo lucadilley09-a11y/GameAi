@@ -22,11 +22,13 @@ Your own game-designing AI, written and trained from scratch. Phase 1 of the pla
 ## Quick start (Windows)
 
 1. Double-click **setup.bat** (only once). It installs everything it needs into this folder.
-2. Double-click **start.bat**. The Game AI app opens in its own window
-   (keep the small black window open; closing it quits the app).
+2. Double-click **start.bat**. Only the Game AI window opens (no black window).
+   Close the window to quit; if it's training, it finishes first (or type `/quit`).
+   If something goes wrong, **start-debug.bat** shows every message, and errors are saved in `logs/app.log`.
 3. Type `/train` and watch the progress bar while it trains from scratch.
 4. Type a game idea, like `a fast ninja escaping a spooky dungeon full of spiders`.
-   The game appears next to the terminal. `/save` keeps it as a file.
+   The game appears next to the terminal. `/game pop` gives it its own window, `/game` hides or shows it,
+   and `/save` keeps it as a file.
 
 **terminal.bat** opens the classic text-only terminal instead (games play inside it with `/play`).
 

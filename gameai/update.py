@@ -9,7 +9,7 @@ import io, json, os, shutil, subprocess, sys, time, urllib.request, zipfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 KEEP = {"data", "models", "runs", "bench", "checkpoints", "learn", "memory", "games", "play", "for-chromebook", "export",
-        ".venv", "update.json", ".version"}  # never overwritten by an update
+        ".venv", "logs", "update.json", ".version"}  # never overwritten by an update
 API = "https://api.github.com/repos/{repo}/commits/{branch}"
 ZIP = "https://codeload.github.com/{repo}/zip/{sha}"
 
@@ -60,6 +60,7 @@ def apply_zip(data, root=ROOT):
 
 def check(install=True, quiet=False):
     """-> dict with 'available', 'installed', 'message', 'changed'."""
+    if os.environ.get("GAMEAI_NO_UPDATE"): return {"available": False, "error": "updates are off on this copy"}
     cfg = config()
     if not cfg:
         return {"available": False, "error": "no update.json yet"}

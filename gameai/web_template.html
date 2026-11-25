@@ -1,50 +1,68 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Game AI Terminal</title>
+<title>Game AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Pixelify+Sans:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-/* VOICE: a hacker's game console; IDEA: a terminal wired to a handheld screen
-   PICTURE: the terminal and the live game side by side; COLOUR and TYPE: near-black, lime accent, JetBrains Mono
-   LAYOUT: terminal left, game right; stacks on narrow screens */
-:root{color-scheme:dark;--bg:#0b0d16;--panel:#11141f;--line:#232840;--ink:#e6e8f2;--dim:#8a90ad;--acc:#b6f24a;--warn:#ffcf5c;--bad:#ff7a8a}
+/* LOOK: like the Claude Code terminal. Dark, one monospace font, coral accent, ● for replies,
+   ⎿ for details, a rounded input box with hints under it. The game screen sits on the right
+   (or in its own window with /game pop). */
+:root{color-scheme:dark;--bg:#141413;--panel:#1c1c1b;--line:#3a3a38;--ink:#ecebe6;--dim:#8f8d86;--acc:#d97757;--ok:#7fbf7a;--warn:#e3b35c;--bad:#e5746f;--sel:#b9a3f2}
 *{box-sizing:border-box;min-width:0}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "JetBrains Mono",ui-monospace,monospace;overflow-x:clip}
-header{display:flex;align-items:baseline;gap:14px;padding:14px max(3vw,14px) 4px;flex-wrap:wrap}
-h1{font:700 26px/1 "Pixelify Sans",system-ui,sans-serif;margin:0;color:var(--acc)}
-header span{color:var(--dim);font-size:13px}
-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;padding:10px max(3vw,14px) 24px;height:calc(100vh - 60px);min-height:560px}
-@media(max-width:900px){main{grid-template-columns:minmax(0,1fr);height:auto}.term{height:70vh}}
-.term{background:var(--panel);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
-#log{flex:1;overflow-y:auto;padding:14px 16px;white-space:pre-wrap;word-break:break-word}
-.row{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:10px 14px}
-.row b{color:var(--acc)}
-#in{flex:1;background:transparent;border:0;color:var(--ink);font:inherit;font-size:16px;outline:none;min-height:32px}
-.u{color:var(--ink)}.a{color:var(--acc)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
-.chips button{font:inherit;font-size:13px;background:#1a1f33;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-height:36px;cursor:pointer}
-.chips button:hover,.chips button:focus-visible{border-color:var(--acc);outline:none}
-table{border-collapse:collapse;margin:4px 0 6px}td{padding:1px 14px 1px 0}
-.screen{background:#1d2142;border-radius:18px;padding:14px;align-self:start}
-canvas{display:block;width:100%;aspect-ratio:4/3;border-radius:8px;background:#000}
-canvas:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
-.hint{color:#aeb4dc;font-size:12px;margin-top:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 "Cascadia Mono","JetBrains Mono",Consolas,ui-monospace,monospace;overflow:hidden}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,46%);height:100vh}
+body.nogame main{grid-template-columns:minmax(0,1fr)}body.nogame .screen{display:none}
+@media(max-width:900px){body{overflow:auto}main{grid-template-columns:minmax(0,1fr);height:auto}.term{height:100vh}}
+.term{display:flex;flex-direction:column;overflow:hidden;padding:10px 18px 8px}
+#log{flex:1;overflow-y:auto;padding:4px 2px 8px;white-space:pre-wrap;word-break:break-word;scrollbar-color:#3a3a38 transparent}
+#log>div{position:relative;padding-left:2ch;margin:0 0 .7em}
+#log>div.a::before,#log>div.w::before,#log>div.e::before{content:'●';position:absolute;left:0}
+#log>div.a::before{color:var(--ink)}#log>div.w::before{color:var(--warn)}#log>div.e::before{color:var(--bad)}
+#log>div.d{margin-top:-.55em;padding-left:5ch}#log>div.d::before{content:'⎿';position:absolute;left:2ch;color:var(--dim)}
+#log>div.u{padding-left:0;color:var(--dim)}
+#log>div.raw{padding-left:0}#log>div.raw::before{content:none}
+.a,.u{color:var(--ink)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}.k{color:var(--acc)}.ok{color:var(--ok)}
+.welcome{border:1px solid var(--acc);border-radius:8px;padding:10px 14px;display:inline-block;max-width:100%}
+.welcome b{color:var(--acc)}
+pre.ban{color:var(--acc);margin:0 0 10px;font:inherit;font-size:12px;line-height:1.1;white-space:pre}
+.menu{display:flex;flex-direction:column;margin:6px 0 2px}
+.menu button{all:unset;cursor:pointer;padding:1px 0 1px 2ch;position:relative;color:var(--ink)}
+.menu button.sel{color:var(--sel)}.menu button.sel::before{content:'❯';position:absolute;left:0}
+.menu button:hover{color:var(--sel)}
+table{border-collapse:collapse;margin:2px 0}td{padding:0 3ch 0 0;vertical-align:top}td:first-child{white-space:nowrap}
+#spin{color:var(--acc);min-height:1.55em;padding-left:0;display:none}#spin.on{display:block}#spin .d{color:var(--dim)}
+.box{border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;gap:1ch;padding:6px 12px}
+.box:focus-within{border-color:#6b6a65}
+.box b{color:var(--ink);font-weight:400}
+#in{flex:1;background:transparent;border:0;color:var(--ink);font:inherit;outline:none;min-height:26px}
+#in::placeholder{color:#6b6a65}
+.foot{display:flex;justify-content:space-between;gap:2ch;color:var(--dim);font-size:12.5px;padding:4px 4px 0;flex-wrap:wrap}
+.prog{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 8px;display:none}.prog.on{display:block}
+.screen{border-left:1px solid var(--line);display:flex;flex-direction:column;padding:10px 18px 12px;background:var(--panel)}
+.bar{display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:12.5px;margin-bottom:8px}
+.bar span b{color:var(--acc);font-weight:400}
+.bar button{all:unset;cursor:pointer;color:var(--dim);padding:2px 6px;border:1px solid var(--line);border-radius:6px;margin-left:6px}
+.bar button:hover,.bar button:focus-visible{color:var(--ink);border-color:var(--acc)}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+canvas{display:block;width:100%;max-height:100%;aspect-ratio:4/3;object-fit:contain;border-radius:6px;background:#000;border:1px solid var(--line)}
+canvas:focus{outline:none;border-color:var(--acc)}
+.hint{color:var(--dim);font-size:12.5px;margin-top:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .stub{display:none}
-.prog{border-top:1px solid var(--line);padding:10px 14px;display:none}.prog.on{display:block}
-.bar{height:10px;background:#232840;border-radius:5px;overflow:hidden;margin:6px 0}.bar>div{height:100%;background:var(--acc);width:0;transition:width .4s}
-pre.ban{color:var(--acc);margin:0 0 4px;font-size:11px;line-height:1.15;white-space:pre}
-body.drag .term{outline:3px dashed var(--acc);outline-offset:-3px}
+body.drag .term{outline:2px dashed var(--acc);outline-offset:-6px}
 </style></head><body>
-<header><h1>Game AI</h1><span id="mode">starting…</span></header>
 <main>
  <section class="term" aria-label="Terminal">
   <div id="log" role="log" aria-live="polite"></div>
-  <div class="prog" id="prog"><div id="gtitle" class="a"></div><svg id="graph" viewBox="0 0 600 170" style="width:100%;height:170px;display:block"></svg><div id="ptext" class="d"></div></div>
-  <div class="row"><b>&gt;</b><input id="in" autocomplete="off" spellcheck="false" placeholder="type a game idea, or /help" aria-label="Terminal input"></div>
+  <div class="prog" id="prog"><div id="gtitle" class="k"></div><svg id="graph" viewBox="0 0 600 170" style="width:100%;height:150px;display:block"></svg><div id="ptext" class="d"></div></div>
+  <div id="spin"></div>
+  <div class="box"><b>&gt;</b><input id="in" autocomplete="off" spellcheck="false" placeholder='Describe a game, like "a ninja in a spooky dungeon"' aria-label="Terminal input"></div>
+  <div class="foot"><span>/help for commands · /game to show or hide the game · / to type a command</span><span id="mode">starting…</span></div>
  </section>
- <section class="screen">
-  <canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas>
-  <div class="hint"><span>Click the game, then arrows or WASD to move</span><span>R: play again · click the terminal to type</span></div>
+ <section class="screen" aria-label="Game">
+  <div class="bar"><span><b>●</b> <span id="gname">Game</span></span><span><button id="popBtn" title="Open the game in its own window">⧉ own window</button><button id="hideBtn" title="Hide the game (/game brings it back)">✕</button></span></div>
+  <div class="stage"><canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas></div>
+  <div class="hint"><span>Click the game, then arrows or WASD to move</span><span>R: play again · / to type</span></div>
  </section>
 </main>
 <button id="editBtn" class="stub"></button><button id="restartBtn" class="stub"></button>
@@ -67,7 +85,7 @@ const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e)
 const GATE=.45,IMPORTANT=['goal','enemy','theme','player'];
 const QTEXT={goal:"What's the goal?",enemy:'What should chase you?',theme:'Where does it take place?',player:'Who do you play as?'};
 const LABEL={none:'none (peaceful)',exit:'find the exit',survive:'survive'};
-let askOn=store.get('gameai.ask',true),lastGame=null,pending=null;
+let askOn=store.get('gameai.ask',true),lastGame=null,pending=null,menu=null,pop=null;
 
 let API=null,lastWhere='';
 function useAI(ai,where){
@@ -113,7 +131,11 @@ async function decodeAny(prompt){
  return AI.decode(prompt);
 }
 const post=(u,b)=>fetch(u,{method:'POST',body:JSON.stringify(b||{})}).then(async r=>({ok:r.ok,...(await r.json().catch(()=>({})))}));
-let watching=false;
+let watching=false,spinT=null,spinMsg='',spinT0=0;
+const SPIN='·✢✳✶✻✽✻✶✳✢';
+function spin(msg){spinMsg=msg;const el=$('spin');el.classList.add('on');if(spinT)return;spinT0=Date.now();let i=0;
+ spinT=setInterval(()=>{el.innerHTML=`${SPIN[i++%SPIN.length]} ${esc(spinMsg)}… <span class="d">(${Math.round((Date.now()-spinT0)/1000)}s)</span>`},120)}
+function unspin(){clearInterval(spinT);spinT=null;$('spin').classList.remove('on')}
 function drawGraph(pts,opt){
  // pts: [{x, y, y2?, dot?}]  y = share fully right (0-1)
  const W=600,H=170,L=44,R=12,T=12,B=26,g=$('graph');if(!pts.length){g.innerHTML='';return}
@@ -121,12 +143,12 @@ function drawGraph(pts,opt){
  const xs=pts.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs,x0+1e-9);
  const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo||1))*(H-T-B);
  const line=(k,c,w,dash)=>{const q=pts.filter(p=>p[k]!=null);return q.length>1?`<polyline points="${q.map(p=>X(p.x)+','+Y(p[k])).join(' ')}" fill="none" stroke="${c}" stroke-width="${w}" ${dash?'stroke-dasharray="4 4"':''}/>`:''};
- let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#232840"/><text x="${L-6}" y="${Y(v)+4}" fill="#8a90ad" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
- const dots=pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#b6f24a"/>`).join('');
+ let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#3a3a38"/><text x="${L-6}" y="${Y(v)+4}" fill="#8f8d86" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
+ const dots=pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#d97757"/>`).join('');
  const lastP=pts.at(-1);
- g.innerHTML=ticks+line('y2','#8a90ad',1.5,true)+line('y','#b6f24a',2.5)+dots+
-  `<text x="${L}" y="${H-6}" fill="#8a90ad" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#8a90ad" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
-  `<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#b6f24a" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`;
+ g.innerHTML=ticks+line('y2','#8f8d86',1.5,true)+line('y','#d97757',2.5)+dots+
+  `<text x="${L}" y="${H-6}" fill="#8f8d86" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#8f8d86" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
+  `<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#d97757" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`;
 }
 async function showLearning(statusLine){
  const rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]);
@@ -134,7 +156,7 @@ async function showLearning(statusLine){
  const t0=rows[0].time,hrs=(rows.at(-1).time-t0)/3600,gain=(rows.at(-1).exact-rows[0].exact)*100,ups=rows.filter((r,i)=>i&&r.promoted).length;
  $('gtitle').innerHTML='How smart your AI is';
  drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.natural??r.typo,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
- $('ptext').innerHTML=`Green line: how often it gets a game idea exactly right. Dashed: the same with natural, real-person wording (or typos, before the teacher has run). Each dot: it got smarter and switched to the new version.<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
+ $('ptext').innerHTML=`Orange line: how often it gets a game idea exactly right. Dashed: the same with natural, real-person wording (or typos, before the teacher has run). Each dot: it got smarter and switched to the new version.<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
  return true;
 }
 async function watch(){
@@ -142,14 +164,15 @@ async function watch(){
  while(true){
   const j=await fetch('api/progress').then(r=>r.json()).catch(()=>null);if(!j)break;
   const pct=j.total?Math.round(j.step/j.total*100):0,st=j.stage||'',nice=/practice|training data/i.test(st)?'writing new practice questions':/learning|Training/.test(st)?`studying (${pct}%)`:/test/i.test(st)?'taking its test':/browser/i.test(st)?'packing up':st?'getting ready':'starting',rd=(st.match(/Round (\d+)/)||[])[1],now=`Right now: ${rd?'round '+rd+', ':''}${nice}`;
+  spin(j.kind==='teacher'?'The teacher is writing examples':j.kind==='learn'?'Learning':'Training');
   if(j.kind==='teacher'){$('gtitle').textContent='The teacher is writing examples';$('graph').innerHTML='';$('ptext').innerHTML=`${j.step} of ${j.total} kept${j.loss!=null?` · ${Math.round(j.loss*100)}% passed the self-check`:''}<br><span class="d">${esc((j.log.filter(l=>l.startsWith('kept')).at(-1)||j.log.at(-1)||'starting…').replace(/^kept[^e]*e\.g\. /,'latest: '))}</span>`}
   else if(j.kind==='learn'){if(!await showLearning(now)){$('gtitle').textContent='Always-on learning';$('ptext').innerHTML=now}}
   else{
    $('gtitle').innerHTML='Training a new AI from scratch';
    drawGraph(j.evals.map(e=>({x:e.step,y:e.exact,y2:e.fields})),{x0:'step 0',x1:'step '+(j.evals.at(-1)||{step:0}).step});
-   $('ptext').innerHTML=`Green line: how often it gets a practice game idea exactly right. Dashed: how often each single part is right.<br>${now}`;
+   $('ptext').innerHTML=`Orange line: how often it gets a practice game idea exactly right. Dashed: how often each single part is right.<br>${now}`;
   }
-  if(!j.running){watching=false;
+  if(!j.running){watching=false;unspin();
    if(j.kind!=='learn')$('prog').classList.remove('on');
    say(j.ok?'All done.':j.kind==='learn'?'Learning stopped.':'Something went wrong. Send Claude these lines:',j.ok?'a':'w');if(!j.ok&&j.kind!=='learn')say(esc(j.log.slice(-8).join('\n')),'d');
    const gl=j.log.find(l=>/Phase 1 gate/.test(l));if(gl&&j.kind!=='learn')say(/PASSED/.test(gl)?'It passed its test and is now your AI.':'It did not pass its test, so your old AI is still in use.','d');
@@ -169,21 +192,22 @@ function askNext(){
  const q=pending.queue[pending.i];
  const opts=options(q.f);
  const lead=q.unsure?`I'm not sure about the ${q.f}; my guess was ${q.guess}. `:'';
- const d=say(`<span class="a">${esc(lead+QTEXT[q.f]||('Which '+q.f+'?'))}</span> <span class="d">(number, word, or Enter to let me pick)</span>`,'a');
- const c=document.createElement('div');c.className='chips';
- opts.forEach((o,i)=>{const b=document.createElement('button');b.textContent=`${i+1} ${LABEL[o]||o}`;b.onclick=()=>answer(String(i+1));c.appendChild(b)});
- const s=document.createElement('button');s.textContent='surprise me';s.onclick=()=>answer('');c.appendChild(s);d.appendChild(c);
+ const d=say(`<span class="a">${esc(lead+QTEXT[q.f]||('Which '+q.f+'?'))}</span> <span class="d">(↑↓ and Enter, a number, or type a word)</span>`,'a');
+ const c=document.createElement('div');c.className='menu';
+ const add=(t,v)=>{const b=document.createElement('button');b.textContent=t;b.dataset.v=v;b.onclick=()=>answer(v);c.appendChild(b)};
+ add('Surprise me','');opts.forEach((o,i)=>add(`${i+1}. ${LABEL[o]||o}`,String(i+1)));c.firstChild.classList.add('sel');d.appendChild(c);menu=c;
 }
 function answer(t){
+ menu=null;
  const q=pending.queue[pending.i],long=t.trim().split(/\s+/).length>3,v=long?null:parseAnswer(q.f,t);
  if(v===null){if(long){pending=null;say('&gt; '+esc(t),'u');say('Skipping the questions; making a new game from that.','d');make(t.trim(),false);return}say(`I didn't catch that. Try a number from the list.`,'w');return}
- say('&gt; '+esc(t||'(you pick)'),'u');pending.pred[q.f]={value:v,conf:1};pending.i++;
+ say('&gt; '+esc(v==='auto'?'(you pick)':(LABEL[v]||v)),'u');pending.pred[q.f]={value:v,conf:1};pending.i++;
  if(pending.i<pending.queue.length)askNext();else{const p=pending;pending=null;finish(p.prompt,p.pred,false)}
 }
 async function make(prompt,edit){
  if(!AI){say('No AI loaded yet. Type /load.','w');return}
  if(edit&&!lastGame){say('No game to change yet. Describe one first.','w');return}
- const t0=performance.now(),pred=await decodeAny(prompt),ms=performance.now()-t0;
+ spin(edit?'Changing your game':'Designing');const t0=performance.now(),pred=await decodeAny(prompt).finally(unspin),ms=performance.now()-t0;
  for(const f of FN){const p=pred[f];if(p.value!=='auto'&&p.conf<GATE){p.unsure=true;p.guess=p.value;p.value='auto'}}
  if(askOn&&!edit){
   const queue=[...FN.filter(f=>pred[f].unsure&&QTEXT[f]).map(f=>({f,unsure:true,guess:pred[f].guess})),...IMPORTANT.filter(f=>pred[f].value==='auto'&&!pred[f].unsure).map(f=>({f}))].slice(0,2);
@@ -219,13 +243,28 @@ function finish(prompt,pred,edit,ms){
  const rows=FN.map(f=>{const c=pred[f].conf,ai=src[f]==='ai';const cls=!ai?'d':c>=.9?'a':c>=.6?'w':'e';
   return `<tr><td class="d">${f}</td><td class="${ai?'u':'d'}">${ai?esc(r[f]):`${src[f]==='kept'?'kept':'auto'} → ${esc(r[f])}`}</td><td class="${cls}">${ai?Math.round(c*100)+'%':''}</td></tr>`}).join('');
  lastDetails=`<table>${rows}${(r.rules||[]).map((x,i)=>`<tr><td class="d">rule ${i+1}</td><td class="u">${esc(ruleText(x,r))}</td><td></td></tr>`).join('')}</table>`;
- say(esc(describe(r,src,edit))+`<br><span class="d">Click the game to play. Try /edit make it harder, /rate 1-5, or /details to see how sure I was.</span>`);
+ say(esc(describe(r,src,edit)));say('Click the game to play. Try /edit make it harder, /rate 1-5, /details, or /game pop for its own window.','d');
+ $('gname').textContent=`${r.player} · ${r.theme} · ${r.goal}`;if(pop&&!pop.closed)popOut();else showGame(true);
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
-const HELP=[['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
- ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 10 minutes)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','PC app: open the game in a browser tab'],
+const HELP=[['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
+ ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 10 minutes)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
+function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
+async function popOut(){
+ if(!lastGame){say('Make a game first.','w');return}
+ let url;
+ if(API&&API.app){const r=await post('api/save',{recipe:lastGame.r,name:'last-game'});if(!r.ok){say(esc(r.error||'Could not open it.'),'w');return}url=r.url+'?t='+Date.now()}
+ else if(window.GAMEAI_GAME_TPL)url=URL.createObjectURL(new Blob([window.GAMEAI_GAME_TPL.replace('/*GAMEAI_RECIPE*/','window.GAMEAI_RECIPE='+JSON.stringify(lastGame.r)+';')],{type:'text/html'}));
+ else{say('Its own window works in the PC app and in GameAI.html.','w');return}
+ const w=window.open(url,'gameai-game','popup,width=860,height=720');
+ if(!w){say('The browser blocked the new window. Allow pop-ups for this page, then try again.','w');return}
+ pop=w;showGame(false);w.focus();
+ const t=setInterval(()=>{if(pop.closed){clearInterval(t);pop=null;showGame(true)}},1000);
+}
+$('popBtn').onclick=popOut;$('hideBtn').onclick=()=>{showGame(false);say('Game hidden. Type /game to bring it back.','d')};
+if(store.get('gameai.nogame',false))showGame(false);
 const needApp=()=>{if(API&&API.app)return false;say('That command works in the PC app (start.bat on your PC).','w');return true};
 function command(line){
  if(pending&&line.startsWith('/')){pending=null;say('Question skipped.','d')}
@@ -248,7 +287,9 @@ function command(line){
     try{const html=window.GAMEAI_GAME_TPL.replace('/*GAMEAI_RECIPE*/','window.GAMEAI_RECIPE='+JSON.stringify(lastGame.r)+';'),a=document.createElement('a');
      a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=(arg||lastGame.r.player+'-'+lastGame.r.theme).replace(/[^\w-]/g,'')+'.html';document.body.appendChild(a);a.click();a.remove();say('Saved to your Downloads folder. Open it any time to play.')}
     catch(e){say('This browser blocked the download.','w')}break}post('api/save',{recipe:lastGame.r,name:arg}).then(r=>say(r.ok?`Saved: ${esc(r.path)}`:esc(r.error),r.ok?'a':'w'));break;
-  case '/open':if(needApp())break;if(!lastGame){say('Make a game first.','w');break}post('api/save',{recipe:lastGame.r,name:'last-game'}).then(r=>{if(r.ok)window.open(r.url,'_blank')});break;
+  case '/open':popOut();break;
+  case '/game':if(/^(pop|window|own)/.test(arg))popOut();else if(arg==='hide'||(!arg&&!document.body.classList.contains('nogame'))){showGame(false);say('Game hidden. Type /game to bring it back.','d')}else{if(pop&&!pop.closed)pop.close();showGame(true);say('Game screen is back.','d')}break;
+  case '/quit':if(needApp())break;say('Closing Game AI. Start it again with start.bat.','d');post('api/quit').then(()=>setTimeout(()=>window.close(),300));break;
   case '/chromebook':if(needApp())break;post('api/chromebook').then(r=>say(r.ok?`Your Chromebook app is ready: ${esc(r.path)}<br><span class="d">Put it on your Chromebook (Google Drive or a USB stick) and open it in Chrome. Your AI is built in. Do this again whenever your AI gets smarter.</span>`:esc(r.error),r.ok?'a':'w'));break;
   case '/details':say(lastDetails||'Make a game first.','d');break;
   case '/share':if(needApp())break;post('api/share',{on:arg!=='off'}).then(r=>{if(!r.ok){say(esc(r.error||'Could not share.'),'w');return}
@@ -267,7 +308,9 @@ $('files').addEventListener('change',async e=>{await loadFiles([...e.target.file
 addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('drag')});
 addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('drag')});
 addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('drag');loadFiles([...e.dataTransfer.files])});
-inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=inp.value;inp.value='';if(v.trim()||pending)command(v.trim())}});
+inp.addEventListener('keydown',e=>{
+ if(menu&&!inp.value&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();const b=[...menu.children],i=b.findIndex(x=>x.classList.contains('sel')),n=(i+(e.key==='ArrowDown'?1:b.length-1))%b.length;b.forEach(x=>x.classList.remove('sel'));b[n].classList.add('sel');b[n].scrollIntoView({block:'nearest'});return}
+ if(e.key==='Enter'){const v=inp.value;inp.value='';if(menu&&!v.trim()){const sel=menu.querySelector('.sel');command(sel?sel.dataset.v:'');return}if(v.trim()||pending)command(v.trim())}});
 addEventListener('keydown',e=>{if(e.target===inp)return;keys[e.code]=true;
  if(S&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
  if(S&&S.state!=='play'&&(e.code==='KeyR'||e.code==='Enter'))build(S.r);
@@ -275,11 +318,7 @@ addEventListener('keydown',e=>{if(e.target===inp)return;keys[e.code]=true;
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
 $('log').addEventListener('click',()=>inp.focus());
-say(`<pre class="ban">  ____                         _    ___
- / ___| __ _ _ __ ___   ___   / \\  |_ _|
-| |  _ / _\` | '_ \` _ \\ / _ \\ / _ \\  | |
-| |_| | (_| | | | | | |  __// ___ \\ | |
- \\____|\\__,_|_| |_| |_|\\___/_/   \\_\\___|</pre><span class="d">your own game-making AI · type /help</span>`);
+say(`<div class="welcome"><b>✻</b> Welcome to <b>Game AI</b>!<br><br><span class="d">  your own game-making AI, built from scratch<br>  /help for commands · just type an idea to make a game</span></div>`,'raw');
 boot();inp.focus();
 }
 </script>

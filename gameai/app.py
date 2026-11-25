@@ -63,7 +63,9 @@ def run_job(args, kind="job"):
     j = STATE["job"]
     j.update(kind=kind, running=True, stage="Starting", step=0, total=0, loss=None, evals=[], log=[], ok=None, started=time.time())
     env = dict(os.environ, GAMEAI_PROGRESS="1", PYTHONUNBUFFERED="1")
-    p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
+    p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    STATE["proc"] = p
     for line in p.stdout:
         line = line.rstrip()
         if line.startswith("@@P"):
@@ -108,7 +110,9 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = unquote(self.path.split("?")[0])
         if path == "/": return self.send(200, page(), "text/html; charset=utf-8")
-        if path == "/api/status": return self.send(200, status())
+        if path == "/api/status":
+            if self.client_address[0] == "127.0.0.1": STATE["seen"] = time.time()
+            return self.send(200, status())
         if path == "/api/model":
             if not STATE["model"]: return self.send(409, {"error": "no model yet"})
             from .export_web import single_file
@@ -154,6 +158,9 @@ class H(BaseHTTPRequestHandler):
             n = max(50, min(int(b.get("n") or 2000), 100000))
             threading.Thread(target=run_job, args=(["gameai.teacher", "--n", str(n)], "teacher"), daemon=True).start()
             return self.send(200, {"ok": True, "n": n})
+        if path == "/api/quit":
+            threading.Thread(target=quit_soon, daemon=True).start()
+            return self.send(200, {"ok": True})
         if path == "/api/update":
             from .update import check
             r = check(install=not STATE["job"]["running"], quiet=True)
@@ -198,7 +205,7 @@ def lan_ip():
 
 class Shared(H):
     """The same app for other devices on your Wi-Fi (your Chromebook), protected by a 4-digit code."""
-    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook")
+    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook", "/api/quit")
 
     def allowed(self):
         from http.cookies import SimpleCookie
@@ -256,7 +263,7 @@ def open_window(url):
              r"C:\Program Files\Google\Chrome\Application\chrome.exe"]
     for c in cands:
         if c and os.path.exists(c):
-            subprocess.Popen([c, f"--app={url}", "--window-size=1400,900"]); return
+            subprocess.Popen([c, f"--app={url}", "--window-size=1500,920"]); return
     webbrowser.open(url)
 
 
@@ -266,6 +273,24 @@ RESTART = 42  # start.bat restarts the app when it exits with this code (after a
 def restart_soon():
     time.sleep(1.5)  # let the page get its answer first
     os._exit(RESTART)
+
+
+def quit_soon():
+    """Stop everything: the training job (if any) and the app."""
+    time.sleep(0.5)
+    p = STATE.get("proc")
+    if p and p.poll() is None: p.kill()
+    os._exit(0)
+
+
+def watchdog():
+    """With the hidden launcher there is no black window, so the app quits by itself
+    about 2 minutes after you close its window (unless it is training or learning)."""
+    while True:
+        time.sleep(5)
+        seen = STATE.get("seen")
+        if seen and time.time() - seen > 150 and not STATE["job"]["running"]:
+            os._exit(0)
 
 
 def auto_update():
@@ -284,10 +309,11 @@ def auto_update():
 
 def main():
     load_model()
-    threading.Thread(target=auto_update, daemon=True).start()
+    if not os.environ.get("GAMEAI_NO_UPDATE"): threading.Thread(target=auto_update, daemon=True).start()
+    if "--auto-quit" in sys.argv: threading.Thread(target=watchdog, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     url = f"http://127.0.0.1:{PORT}/"
-    print(f"Game AI app running at {url}\nKeep this window open while you use the app. Close it to quit.")
+    print(f"Game AI app running at {url}")
     if "--no-window" not in sys.argv:
         open_window(url)
     try:
