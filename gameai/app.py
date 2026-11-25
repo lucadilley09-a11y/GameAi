@@ -4,7 +4,7 @@
 
 Runs a small local server (only reachable from this PC) and opens the terminal in an
 app window (Microsoft Edge/Chrome app mode, or your browser if neither is found)."""
-import json, os, shutil, subprocess, sys, threading, time, webbrowser
+import json, re, os, shutil, subprocess, sys, threading, time, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import unquote
 
@@ -69,9 +69,14 @@ def run_job(args, kind="job"):
     p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
     STATE["proc"] = p
+    os.makedirs("logs", exist_ok=True)
+    jl = open("logs/job.log", "a", encoding="utf-8")  # the whole output of every job, for finding problems later
+    jl.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')}  {' '.join(args)} ---\n"); jl.flush()
     try:
         for line in p.stdout:
             line = line.rstrip()
+            if not line.startswith("@@P") or line.startswith('@@P{"step": 1,') or re.match(r'@@P\{"step": \d*01,', line):
+                jl.write(time.strftime("%H:%M:%S ") + line + "\n"); jl.flush()  # every line, but progress only every 100 steps
             try:
                 if line.startswith("@@P"):
                     d = json.loads(line[3:]); j.update(step=d["step"], total=d["total"], loss=d["loss"])
@@ -84,10 +89,12 @@ def run_job(args, kind="job"):
             if line.startswith("==="): j["stage"] = line.strip("= ")
             j["log"] = (j["log"] + [line])[-40:]
         j["ok"] = p.wait() == 0
+        jl.write(f"--- finished: {'ok' if j['ok'] else 'failed'} ---\n")
     except Exception as e:  # whatever happens, the job must not stay "running" forever
         j["log"] = (j["log"] + [f"The app lost track of the job: {e}"])[-40:]; j["ok"] = False
         if p.poll() is None: p.kill()
     finally:
+        jl.close()
         try:
             with STATE["lock"]:
                 load_model()

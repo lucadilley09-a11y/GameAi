@@ -160,7 +160,10 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.backends.cuda.matmul.allow_tf32 = True
     tok = Tokenizer()
+    t_load = time.time()
+    print(f"Loading the practice data on {device}...", flush=True)
     rows = load_jsonl(f"{a.data}/train.jsonl")
+    print(f"  {len(rows)} practice examples loaded ({time.time() - t_load:.0f}s)", flush=True)
     if os.path.exists("data/teacher.jsonl"):  # natural examples written by the teacher AI, counted twice
         t_rows = load_jsonl("data/teacher.jsonl")
         rows += t_rows * 2
@@ -170,14 +173,20 @@ def main():
         rows += e_rows
         print(f"using {len(e_rows)} extra lessons (its mistakes and your corrections)", flush=True)
     from .guard import filter_training
+    t1 = time.time()
     rows = filter_training(rows)  # never learn a test question, or a reworded copy of one (validation, tests, sealed sets)
+    print(f"  checked them against the test questions ({time.time() - t1:.0f}s)", flush=True)
     val_rows = load_jsonl(f"{a.data}/val.jsonl")
     val = encode(val_rows, tok)
+    t1 = time.time()
     train_d, val_d = GpuData(encode(rows, tok), tok, device), GpuData(val, tok, device)
+    print(f"  turned them into numbers for the GPU ({time.time() - t1:.0f}s)", flush=True)
     n_out = len(OUT_FIELDS) + 1
 
     if a.init:
         from .model import Config
+        t1 = time.time()
+        print(f"Loading your AI from {a.init}...", flush=True)
         ck0 = torch.load(a.init, map_location=device, weights_only=False)
         if ck0.get("tokenizer") != tok.itos:  # older game language: carry it over instead of starting from scratch
             from .generate import upgrade_model
@@ -185,6 +194,7 @@ def main():
         else:
             model = GameAI(Config(**ck0["config"])).to(device); model.load_state_dict(ck0["model"])
         a.size = ck0.get("size", a.size)
+        print(f"  ready ({time.time() - t1:.0f}s, size {a.size})", flush=True)
     else:
         model = GameAI(make_config(a.size, tok.vocab_size, tok.max_len)).to(device)
     n_params = model.num_params()
