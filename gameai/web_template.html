@@ -127,7 +127,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 let F={},FN=[],trained=false,AI=null;
 
 /*ENGINE*/
-window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a)};  // for automatic tests
+window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a),goExplore:(...a)=>goExplore(...a)};  // for automatic tests
 
 const log=$('log'),inp=$('in');
 const say=(html,cls='a')=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
@@ -344,9 +344,9 @@ async function finish(prompt,pred,edit,ms){
  const P={};for(const f of FN)P[f]={use:pred[f].value};
  const {r,src}=resolve(P,edit?lastGame.r:null),nr=rulesFrom(pred);r.rules=nr.length||!edit?nr:(lastGame.r.rules||[]);src.rules=nr.length?'ai':'kept';
  spin('Playtesting');let res;try{res=await bestLevel(r,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
- r.seed=res.best.seed;build(r);const play=playReport(res,r);lastGame={prompt,r,edit,raw:pred.__raw,corr:pred.__corr||null,time:new Date().toISOString(),play:{tried:res.tried,wins:res.best.wins,hard:res.best.hard,runs:res.best.runs}};
+ r.seed=res.best.seed;if(res.best.balance)r.balance=res.best.balance;build(r);const play=playReport(res,r);lastGame={prompt,r,edit,raw:pred.__raw,corr:pred.__corr||null,time:new Date().toISOString(),play:{tried:res.tried,wins:res.best.wins,hard:res.best.hard,proven:res.best.proven,how:res.best.how,runs:res.best.runs}};
  if(!edit&&pred.__corr&&pred.__raw)teach(prompt,{...pred.__raw,...pred.__corr},true);
- if(API&&API.app)post('api/playlog',{prompt,recipe:r,edit,tried:res.tried,runs:res.best.runs,problems:play.probs}).catch(()=>{});
+ if(API&&API.app)post('api/playlog',{prompt,recipe:r,edit,tried:res.tried,runs:res.best.runs,proven:res.best.proven,hard:res.best.hard,problems:play.probs}).catch(()=>{});
  const rows=FN.map(f=>{const c=pred[f].conf,ai=src[f]==='ai';const cls=!ai?'d':c>=.9?'a':c>=.6?'w':'e';
   return `<tr><td class="d">${f}</td><td class="${ai?'u':'d'}">${ai?esc(r[f]):`${src[f]==='kept'?'kept':'auto'} → ${esc(r[f])}`}</td><td class="${cls}">${ai?Math.round(c*100)+'%':''}</td></tr>`}).join('');
  lastDetails=`${esc(play.text)}<table>${rows}${(r.rules||[]).map((x,i)=>`<tr><td class="d">rule ${i+1}</td><td class="u">${esc(ruleText(x,r))}</td><td></td></tr>`).join('')}</table>`;

@@ -70,13 +70,16 @@ Always-on learning keeps whatever size is in use. The Chromebook file stores the
 (1 byte per weight plus a scale per row, about 4x smaller, same answers on 397 of 400 test requests);
 the PC keeps full precision.
 
-## Playtest bot
+## Playtesters
 
-Every new game is played by a bot in fast-forward before you see it (a few milliseconds per try).
-It tries several versions of the level and keeps one it can beat, with hardness closest to what you asked for.
-`/quality fast|normal|best` = 1, 6 or 16 versions. If it can't beat any version you get a heads-up.
-Results are saved in `memory/playtests.jsonl` for future training. The bot isn't a great player yet (it beats
-about half of random games on the first try, and about 4 in 5 when it gets 6 versions to choose from).
+Every new game is tested before you see it, by three testers (cheapest first, as in the research plan):
+1. **Exact check**: every item, key and the exit can be reached.
+2. **Bots at three skill levels** (beginner, average, expert) play in fast-forward; who wins gives the difficulty.
+3. **Go-Explore search** (saves good positions and keeps exploring from them) checks levels the bots lost.
+
+It tries up to 1, 6 or 16 versions (`/quality fast|normal|best`), stops early when one is proven beatable and
+as hard as you asked, and if nothing can be beaten it tones the game down a little (fewer enemies).
+In a test of 150 random games: 91% proven beatable, easy/normal/hard measured in the right order, ~0.3 s each.
 
 ## Always-on learning and the self-improving loop
 
