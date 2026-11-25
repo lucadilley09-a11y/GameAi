@@ -31,14 +31,16 @@ def main():
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     os.makedirs("logs", exist_ok=True)
     from .app import open_window
+    background = "--background" in sys.argv  # started with Windows: no window, stays on for your Chromebook
     if running():
-        open_window(URL); return
-    first = True
+        if not background: open_window(URL)
+        return
+    first = not background
     while True:
         with open("logs/app.log", "a", encoding="utf-8") as log:
             log.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n"); log.flush()
             subprocess.run([sys.executable, "-m", "gameai.update"], stdout=log, stderr=log, creationflags=NO_WINDOW)
-            args = [sys.executable, "-m", "gameai.app", "--auto-quit"] + ([] if first else ["--no-window"])
+            args = [sys.executable, "-m", "gameai.app", "--auto-quit"] + ([] if first else ["--no-window"]) + (["--stay"] if background else [])
             t0 = time.time()
             code = subprocess.run(args, stdout=log, stderr=log, creationflags=NO_WINDOW).returncode
         first = False

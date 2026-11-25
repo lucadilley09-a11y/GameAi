@@ -106,6 +106,7 @@ async function boot(){
   else say(API.note?'Your AI needs one retrain for the new game rules. Type /train (about 10-30 minutes). Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
   if(API.fresh)say(`Right now it gets about ${Math.floor(API.fresh.exact*1000)/10}% of game ideas exactly right.`,'d');
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
+   if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
    if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say('An update is ready. It installs by itself when the current training finishes.','d')}
    if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}},5000)}
@@ -114,6 +115,14 @@ async function boot(){
   return;
  }
  $('mode').textContent='Chromebook edition';
+ const pc=store.get('gameai.pc',null)||window.GAMEAI_PC;
+ if(pc&&pc.urls&&!/[?&]offline/.test(location.search)){
+  $('mode').textContent='Looking for your PC…';
+  const found=await Promise.any(pc.urls.map(u=>fetch(u+'api/ping',{signal:AbortSignal.timeout(2500)}).then(r=>r.json()).then(j=>{if(!j.gameai||!j.sharing)throw 0;return u}))).catch(()=>null);
+  if(found){say('Your PC is on, so I\'m switching to it. Training and learning run there, and it\'s always the newest version.','a');setTimeout(()=>location.href=found+'?pin='+encodeURIComponent(pc.pin),700);return}
+  say("Your PC isn't on (or Game AI isn't running on it), so I'm working offline here. Games still work. Reopen this when your PC is on to train.",'d');
+  $('mode').textContent='Chromebook edition (offline)';
+ }
  if(window.GAMEAI_BUILTIN){try{useAI(createAI(window.GAMEAI_BUILTIN,b64buf(window.GAMEAI_BUILTIN.b64)),'your trained AI (built into this file)');return}catch(e){}}
  const saved=await recall();
  if(saved){try{useAI(createAI(saved,b64buf(saved.b64)),'your model, remembered in this browser');return}catch(e){}}
@@ -178,7 +187,7 @@ async function watch(){
   }
   if(!j.running){watching=false;unspin();
    if(j.kind!=='learn')$('prog').classList.remove('on');
-   say(j.ok?'All done.':j.kind==='learn'?'Learning stopped.':'Something went wrong. Send Claude these lines:',j.ok?'a':'w');if(!j.ok&&j.kind!=='learn')say(esc(j.log.slice(-8).join('\n')),'d');
+   say(j.stopped?'Stopped.':j.ok?'All done.':j.kind==='learn'?'Learning stopped.':'Something went wrong. Send Claude these lines:',j.ok?'a':'w');if(!j.ok&&!j.stopped&&j.kind!=='learn')say(esc(j.log.slice(-8).join('\n')),'d');
    const gl=j.log.find(l=>/Phase 1 gate/.test(l));if(gl&&j.kind!=='learn')say(/PASSED/.test(gl)?'It passed its test and is now your AI.':'It did not pass its test, so your old AI is still in use.','d');
    await boot();break}
   await new Promise(r=>setTimeout(r,1000));
@@ -256,7 +265,7 @@ async function finish(prompt,pred,edit,ms){
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
-const HELP=[['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
+const HELP=[['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
  ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 15 seconds)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
 function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
@@ -273,7 +282,7 @@ async function popOut(){
 }
 $('popBtn').onclick=popOut;$('hideBtn').onclick=()=>{showGame(false);say('Game hidden. Type /game to bring it back.','d')};
 if(store.get('gameai.nogame',false))showGame(false);
-const needApp=()=>{if(API&&API.app)return false;say('That command works in the PC app (start.bat on your PC).','w');return true};
+const needApp=()=>{if(API&&API.app)return false;say(window.GAMEAI_PC||store.get('gameai.pc',null)?"That needs your PC, and it isn't reachable right now. Turn it on and start Game AI (or type /autostart on there once), then reopen this.":'That needs your PC: start Game AI there (start.bat), then use /share or /chromebook.','w');return true};
 function command(line){
  if(pending&&line.startsWith('/')){pending=null;say('Question skipped.','d')}
  if(pending){answer(line);return}
@@ -306,6 +315,10 @@ function command(line){
   case '/update':if(needApp())break;say('Checking for updates…','d');post('api/update').then(r=>say(r.installed?`Installing: ${esc(r.message)}. The app restarts in a moment.`:r.error?esc(r.error):'Already up to date.',r.installed?'a':'d'));break;
   case '/quality':if(!TRIES[arg]){say(`Playtest quality is ${quality} (${TRIES[quality]} version${TRIES[quality]>1?'s':''} per game). Use /quality fast, normal or best.`,'d');break}
    quality=arg;store.set('gameai.quality',arg);say(`Quality set to ${arg}: the bot will try ${TRIES[arg]} version${TRIES[arg]>1?'s':''} of each game and keep the best.`);break;
+  case '/stop':if(needApp())break;post('api/stop').then(r=>say(r.stopped?'Stopping it now.':'Nothing is running.','d'));break;
+  case '/autostart':if(needApp())break;post('api/autostart',{on:arg!=='off'}).then(r=>say(r.ok?(r.on?'Game AI will start by itself (no window) when your PC turns on, so your Chromebook can always use it. Turn off with /autostart off.':'Game AI will no longer start with your PC.'):esc(r.error||'Could not change that.'),r.ok?'a':'w'));break;
+  case '/pc':{const m=arg.match(/^(\S+)\s+(\d{4})$/);if(!m){say('Use: /pc 192.168.1.20 1234 (the address and code that /share shows on your PC). /pc off forgets it.','d');if(arg==='off'){store.set('gameai.pc',null);say('Forgot the PC.','d')}break}
+   const u=/^https?:/.test(m[1])?m[1].replace(/\/?$/,'/'):`http://${m[1].replace(/:\d+$/,'')}:8766/`;store.set('gameai.pc',{urls:[u],pin:m[2]});say('Saved. Reloading to connect…','d');setTimeout(()=>location.reload(),600);break}
   case '/questions':askOn=arg!=='off';store.set('gameai.ask',askOn);say(`Questions ${askOn?'on':'off'}.`);break;
   case '/load':$('files').click();say('Pick gameai-model.json (from the for-chromebook folder on your PC).','d');break;
   case '/ratings':{const t=JSON.stringify(store.get('gameai.ratings',[]));navigator.clipboard?.writeText(t).then(()=>say('Ratings copied. Paste them into a file on your PC.'),()=>say('Copy was blocked by the browser.','w'));break}

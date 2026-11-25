@@ -36,7 +36,7 @@ def single_file(checkpoint="models/current.pt"):
     return json.dumps({**m, "b64": base64.b64encode(raw).decode()})
 
 
-def build_page(builtin=None):
+def build_page(builtin=None, pc=None):
     play = open(os.path.join(HERE, "play_template.html"), encoding="utf-8").read()
     engine = play[play.index("// ---------- engine ----------"):play.index("// ---------- prompt -> recipe -> game ----------")]
     engine = engine.replace("Describe a game and press New game", "Type a game idea in the terminal").replace("Training the AI…", "Loading the AI…")
@@ -45,10 +45,12 @@ def build_page(builtin=None):
     if builtin:  # one-file Chromebook app: the AI and the game template travel inside the page
         tpl = json.dumps(play).replace("</", "<\\/")
         page = page.replace("/*BUILTIN*/", "window.GAMEAI_BUILTIN=" + builtin + ";window.GAMEAI_GAME_TPL=" + tpl + ";")
+    if pc:  # the Chromebook file knows where your PC is, so it can use it when it's on
+        page = page.replace("<script>/*BUILTIN*/", "<script>window.GAMEAI_PC=" + json.dumps(pc) + ";/*BUILTIN*/", 1) if "/*BUILTIN*/" in page else page.replace("<script>window.GAMEAI_BUILTIN", "<script>window.GAMEAI_PC=" + json.dumps(pc) + ";window.GAMEAI_BUILTIN", 1)
     return page
 
 
-def main(checkpoint="models/current.pt", out="export/web"):
+def main(checkpoint="models/current.pt", out="export/web", pc=None):
     os.makedirs(out, exist_ok=True); os.makedirs("for-chromebook", exist_ok=True)
     m, raw = export_model(checkpoint)
     json.dump(m, open(os.path.join(out, "model.json"), "w"))
@@ -56,7 +58,7 @@ def main(checkpoint="models/current.pt", out="export/web"):
     open(os.path.join(out, "index.html"), "w", encoding="utf-8").write(build_page())
     single = json.dumps({**m, "b64": base64.b64encode(raw).decode()})
     open("for-chromebook/gameai-model.json", "w").write(single)
-    open("for-chromebook/GameAI.html", "w", encoding="utf-8").write(build_page(single))
+    open("for-chromebook/GameAI.html", "w", encoding="utf-8").write(build_page(single, pc))
     print(f"Chromebook app ready: {os.path.abspath('for-chromebook/GameAI.html')}  ({len(raw) * 1.34 / 1e6:.1f} MB)")
     print("Put it on your Chromebook (Google Drive or USB) and open it in Chrome. Your AI is built in.")
 

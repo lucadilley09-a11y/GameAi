@@ -61,10 +61,10 @@ def decode(prompt):
 
 def run_job(args, kind="job"):
     j = STATE["job"]
-    j.update(kind=kind, running=True, stage="Starting", step=0, total=0, loss=None, evals=[], log=[], ok=None, started=time.time())
+    j.update(stopped=False, kind=kind, running=True, stage="Starting", step=0, total=0, loss=None, evals=[], log=[], ok=None, started=time.time())
     env = dict(os.environ, GAMEAI_PROGRESS="1", PYTHONUNBUFFERED="1")
     p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
     STATE["proc"] = p
     for line in p.stdout:
         line = line.rstrip()
@@ -111,7 +111,7 @@ class H(BaseHTTPRequestHandler):
         path = unquote(self.path.split("?")[0])
         if path == "/": return self.send(200, page(), "text/html; charset=utf-8")
         if path == "/api/status":
-            if self.client_address[0] == "127.0.0.1": STATE["seen"] = time.time()
+            STATE["seen"] = time.time()  # the PC window or your Chromebook is using the app
             return self.send(200, status())
         if path == "/api/model":
             if not STATE["model"]: return self.send(409, {"error": "no model yet"})
@@ -152,6 +152,7 @@ class H(BaseHTTPRequestHandler):
                 url, pin = start_share()
                 return self.send(200, {"url": url, "pin": pin})
             STATE["sharing"] = False
+            save_share()
             return self.send(200, {"ok": True})
         if path == "/api/teacher":
             if STATE["job"]["running"]: return self.send(409, {"error": "busy: wait for the current job to finish"})
@@ -162,6 +163,17 @@ class H(BaseHTTPRequestHandler):
             os.makedirs("memory", exist_ok=True)
             with open("memory/playtests.jsonl", "a", encoding="utf-8") as f: f.write(json.dumps(dict(b, time=time.time())) + "\n")
             return self.send(200, {"ok": True})
+        if path == "/api/stop":
+            return self.send(200, {"ok": True, "stopped": kill_job()})
+        if path == "/api/autostart":
+            if os.name != "nt": return self.send(400, {"error": "start-with-Windows only works on Windows"})
+            f = os.path.join(os.environ["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "GameAI.bat")
+            if b.get("on", True):
+                root = os.path.abspath(".")
+                open(f, "w", newline="").write(f'@echo off\r\ncd /d "{root}"\r\nstart "" "{root}\\.venv\\Scripts\\pythonw.exe" -m gameai.launch --background\r\n')
+            elif os.path.exists(f):
+                os.remove(f)
+            return self.send(200, {"ok": True, "on": bool(b.get("on", True))})
         if path == "/api/quit":
             threading.Thread(target=quit_soon, daemon=True).start()
             return self.send(200, {"ok": True})
@@ -184,7 +196,8 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/chromebook":
             if not STATE["model"]: return self.send(409, {"error": "no model yet"})
             from .export_web import main as ex
-            ex()
+            _, pin = start_share()
+            ex(pc={"urls": share_urls(), "pin": pin})
             folder = os.path.abspath("for-chromebook")
             if os.name == "nt": os.startfile(folder)
             return self.send(200, {"path": os.path.join(folder, "GameAI.html")})
@@ -209,7 +222,7 @@ def lan_ip():
 
 class Shared(H):
     """The same app for other devices on your Wi-Fi (your Chromebook), protected by a 4-digit code."""
-    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook", "/api/quit")
+    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook", "/api/quit", "/api/autostart")
 
     def allowed(self):
         from http.cookies import SimpleCookie
@@ -240,13 +253,39 @@ class Shared(H):
                       "<h2 style='color:#b6f24a'>Game AI</h2><form>Enter the 4-digit code shown on your PC: <input name=pin inputmode=numeric autofocus style='font:inherit'> <button>Connect</button></form>", "text/html"); return False
         return True
 
+    def ping(self):
+        """Lets GameAI.html on your Chromebook find out if your PC is on (says nothing else)."""
+        body = json.dumps({"gameai": True, "sharing": bool(STATE.get("sharing"))}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Content-Length", str(len(body))); BaseHTTPRequestHandler.end_headers(self); self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204); self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET"); self.send_header("Access-Control-Allow-Private-Network", "true")
+        BaseHTTPRequestHandler.end_headers(self)
+
     def do_GET(self):
+        if self.path.split("?")[0] == "/api/ping": return self.ping()
         if self.gate(): super().do_GET()
 
     def do_POST(self):
         if not self.gate(): return
         if self.path in self.LOCAL_ONLY: return self.send(403, {"error": "only from the PC itself"})
         super().do_POST()
+
+
+SHARE_FILE = "memory/share.json"
+
+
+def save_share():
+    os.makedirs("memory", exist_ok=True)
+    json.dump({"on": bool(STATE.get("sharing")), "pin": STATE.get("pin")}, open(SHARE_FILE, "w"))
+
+
+def share_urls():
+    import socket
+    return [f"http://{lan_ip()}:{SHARE_PORT}/", f"http://{socket.gethostname().lower()}.local:{SHARE_PORT}/"]
 
 
 def start_share():
@@ -257,6 +296,7 @@ def start_share():
         STATE["share_srv"] = srv
     STATE["pin"] = STATE.get("pin") or f"{secrets.randbelow(10000):04d}"
     STATE["sharing"] = True
+    save_share()  # remembered: sharing comes back on (same code) every time the app starts
     return f"http://{lan_ip()}:{SHARE_PORT}/", STATE["pin"]
 
 
@@ -279,13 +319,23 @@ def restart_soon():
     os._exit(RESTART)
 
 
+def kill_job():
+    """Stop the running job and everything it started (like the teacher inside learning)."""
+    p = STATE.get("proc")
+    if not (p and p.poll() is None): return False
+    STATE["job"]["stopped"] = True
+    if os.name == "nt": subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        import signal
+        try: os.killpg(p.pid, signal.SIGKILL)
+        except Exception: p.kill()
+    return True
+
+
 def quit_soon():
     """Stop everything: the training job (if any) and the app."""
     time.sleep(0.5)
-    p = STATE.get("proc")
-    if p and p.poll() is None:  # also stop anything it started (like the teacher)
-        if os.name == "nt": subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
-        else: p.kill()
+    kill_job()
     os._exit(0)
 
 
@@ -331,7 +381,14 @@ def main():
     STATE["started_version"] = local_version()
     load_model()
     if not os.environ.get("GAMEAI_NO_UPDATE"): threading.Thread(target=auto_update, daemon=True).start()
-    if "--auto-quit" in sys.argv: threading.Thread(target=watchdog, daemon=True).start()
+    if os.path.exists(SHARE_FILE):
+        try:
+            sh = json.load(open(SHARE_FILE))
+            if sh.get("on"):
+                STATE["pin"] = sh.get("pin"); start_share()
+        except Exception:
+            pass
+    if "--auto-quit" in sys.argv and "--stay" not in sys.argv: threading.Thread(target=watchdog, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     url = f"http://127.0.0.1:{PORT}/"
     print(f"Game AI app running at {url}")

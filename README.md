@@ -34,13 +34,15 @@ Your own game-designing AI, written and trained from scratch. Phase 1 of the pla
 
 ## Chromebook
 
-**Always up to date (recommended):** in the PC app type `/share on`. Open the address it shows on your
-Chromebook (same Wi-Fi) and type the 4-digit code once. Then install it as an app from Chrome's menu
-(Cast, save and share, then Install page as app). It always has your newest AI and terminal, and can even
-train and learn using your PC's GPU, whenever the PC app is running. If Windows asks about the firewall, click Allow.
+Your Chromebook can start training, learning and the teacher; they run on your PC.
 
-**Offline copy:** `/chromebook` makes `for-chromebook/GameAI.html` with your AI built in. Open it in Chrome on the
-Chromebook when the PC is off. Redo it whenever your AI gets smarter.
+1. On the PC, type `/chromebook`. It turns sharing on (remembered, same 4-digit code every time) and makes
+   `for-chromebook/GameAI.html` with your AI built in. Put that file on your Chromebook (Google Drive or USB).
+2. Open GameAI.html on the Chromebook. If your PC is on and running Game AI, it switches to your PC by itself,
+   so `/train`, `/learn on`, `/teacher` and `/stop` run there and it's always the newest version.
+   If the PC is off, it works offline (making and playing games still works).
+3. Optional: `/autostart on` on the PC starts Game AI hidden whenever the PC turns on, so the Chromebook can always reach it.
+   If the file can't find your PC (its address changed), type `/pc <address> <code>` with what `/share` shows.
 
 ## Game rules (Phase 2)
 
