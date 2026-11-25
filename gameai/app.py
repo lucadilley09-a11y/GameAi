@@ -46,8 +46,8 @@ def status():
     except Exception:
         pass
     from .update import local_version
-    v = local_version()
-    return {"app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
+    v = STATE.setdefault("started_version", local_version())  # the version this running app is, not the one just downloaded
+    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
             "training": STATE["job"]["running"], "learning": STATE["job"].get("kind") == "learn" and STATE["job"]["running"]}
 
 
@@ -300,20 +300,35 @@ def watchdog():
 
 
 def auto_update():
-    """Every 10 minutes: install a newer version from GitHub, then restart (never during a training job)."""
-    from .update import check
+    """Every 15 seconds, ask GitHub (tiny request) whether there's a newer version. If so, install it and
+    restart; the open window reloads by itself. During training it waits until the job is done."""
+    from .update import check, config, head_sha, local_version
+    cfg = config()
+    if not cfg: return
     while True:
-        time.sleep(600)
+        time.sleep(15)
+        try:
+            sha = head_sha(cfg)
+        except Exception:
+            continue  # offline: try again later
+        if not sha or sha == local_version().get("sha"):
+            STATE["update_waiting"] = False
+            continue
         if STATE["job"]["running"]:
+            STATE["update_waiting"] = True  # the page tells you it will install after the job
             continue
         try:
-            if check(quiet=True).get("installed"):
+            r = check(quiet=True)
+            if r.get("installed"):
+                STATE["updating"] = r.get("message") or "new version"
                 restart_soon()
         except Exception:
             pass
 
 
 def main():
+    from .update import local_version
+    STATE["started_version"] = local_version()
     load_model()
     if not os.environ.get("GAMEAI_NO_UPDATE"): threading.Thread(target=auto_update, daemon=True).start()
     if "--auto-quit" in sys.argv: threading.Thread(target=watchdog, daemon=True).start()

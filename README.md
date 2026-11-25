@@ -101,7 +101,7 @@ Every game you make is logged in `memory/episodes.jsonl` and ratings in
 ## Automatic updates
 
 The app updates itself from the project's GitHub repo (set in `update.json`): when `start.bat` starts,
-and every 10 minutes while it runs (never in the middle of training). It downloads only the code,
+and every 15 seconds while it runs (if training is running, it waits until it finishes). It downloads only the code,
 restarts in a second, and the window reloads, including on a Chromebook connected with `/share`.
 Your trained AI, data, games and ratings are never touched. `/update` checks right away.
 

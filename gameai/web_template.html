@@ -106,6 +106,8 @@ async function boot(){
   else say(API.note?'Your AI needs one retrain for the new game rules. Type /train (about 10-30 minutes). Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
   if(API.fresh)say(`Right now it gets about ${Math.floor(API.fresh.exact*1000)/10}% of game ideas exactly right.`,'d');
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
+   if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
+   if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say('An update is ready. It installs by itself when the current training finishes.','d')}
    if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}},5000)}
   if(API.update_msg&&API.version!=='dev')say(`Version ${esc(API.version)}: ${esc(API.update_msg)}`,'d');
   if(API.training)watch();else showLearning('').then(ok=>{if(ok)$('prog').classList.add('on')});
@@ -255,7 +257,7 @@ async function finish(prompt,pred,edit,ms){
  setTimeout(()=>cv.focus(),0);
 }
 const HELP=[['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
- ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 10 minutes)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
+ ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 15 seconds)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
 function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
 async function popOut(){

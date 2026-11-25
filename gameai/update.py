@@ -2,7 +2,7 @@
 
     python -m gameai.update          check once and install a newer version if there is one
 
-start.bat runs this before opening the app, and the app checks again every 10 minutes.
+start.bat runs this before opening the app, and the app checks again every 15 seconds while it runs.
 Only code is replaced. Your trained AI, data, games, ratings and settings are never touched.
 """
 import io, json, os, shutil, subprocess, sys, time, urllib.request, zipfile
@@ -33,6 +33,17 @@ def get(url, timeout=20):
 def latest(cfg):
     d = json.loads(get(API.format(repo=cfg["repo"], branch=cfg.get("branch", "main"))))
     return {"sha": d["sha"], "message": d["commit"]["message"].split("\n")[0], "date": d["commit"]["committer"]["date"]}
+
+
+def head_sha(cfg):
+    """The newest version's id, in one tiny request (about 0.5 KB). This isn't GitHub's API, so it can be
+    checked every few seconds without hitting GitHub's limit of 60 API calls an hour."""
+    import re
+    req = urllib.request.Request(f"https://github.com/{cfg['repo']}.git/info/refs?service=git-upload-pack", headers={"User-Agent": "git/2.40 game-ai"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        text = r.read().decode("latin1")
+    m = re.search(r"([0-9a-f]{40}) refs/heads/" + re.escape(cfg.get("branch", "main")) + r"\b", text)
+    return m.group(1) if m else None
 
 
 def apply_zip(data, root=ROOT):
@@ -67,7 +78,12 @@ def check(install=True, quiet=False):
     try:
         new = latest(cfg)
     except Exception as e:
-        return {"available": False, "error": f"could not reach GitHub: {e}"}
+        try:  # GitHub's API said no (often its hourly limit): use the tiny check instead
+            sha = head_sha(cfg)
+            if not sha: raise RuntimeError("no version found")
+            new = {"sha": sha, "message": "new version", "date": ""}
+        except Exception:
+            return {"available": False, "error": f"could not reach GitHub: {e}"}
     cur = local_version()
     if new["sha"] == cur.get("sha"):
         return {"available": False, "version": new["sha"][:7]}
