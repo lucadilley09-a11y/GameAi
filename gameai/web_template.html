@@ -108,7 +108,7 @@ async function boot(){
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
    if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
-   if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say('An update is ready. It installs by itself when the current training finishes.','d')}
+   if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say(st.training&&st.learning?'An update is ready. Learning pauses after this round, installs it, and carries on by itself.':'An update is ready. It installs by itself when the current training finishes.','d')}
    if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}},5000)}
   if(API.update_msg&&API.version!=='dev')say(`Version ${esc(API.version)}: ${esc(API.update_msg)}`,'d');
   if(API.training)watch();else showLearning('').then(ok=>{if(ok)$('prog').classList.add('on')});
@@ -151,14 +151,15 @@ function unspin(){clearInterval(spinT);spinT=null;$('spin').classList.remove('on
 function drawGraph(pts,opt){
  // pts: [{x, y, y2?, dot?}]  y = share fully right (0-1)
  const W=600,H=170,L=44,R=12,T=12,B=26,g=$('graph');if(!pts.length){g.innerHTML='';return}
- const ys=pts.flatMap(p=>[p.y,p.y2]).filter(v=>v!=null),lo=Math.max(0,Math.floor((Math.min(...ys)*100-1))/100),hi=Math.min(1,Math.ceil(Math.max(...ys)*100+.5)/100);
+ const ys=pts.flatMap(p=>[p.y,p.y2,p.c]).filter(v=>v!=null),lo=Math.max(0,Math.floor((Math.min(...ys)*100-1))/100),hi=Math.min(1,Math.ceil(Math.max(...ys)*100+.5)/100);
  const xs=pts.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs,x0+1e-9);
  const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo||1))*(H-T-B);
  const line=(k,c,w,dash)=>{const q=pts.filter(p=>p[k]!=null);return q.length>1?`<polyline points="${q.map(p=>X(p.x)+','+Y(p[k])).join(' ')}" fill="none" stroke="${c}" stroke-width="${w}" ${dash?'stroke-dasharray="4 4"':''}/>`:''};
  let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#3a3a38"/><text x="${L-6}" y="${Y(v)+4}" fill="#8f8d86" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
+ const tries=pts.filter(p=>p.c!=null&&!p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.c)}" r="3" fill="none" stroke="#8f8d86"/>`).join('');  // rounds the safety net didn't use
  const dots=pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#d97757"/>`).join('');
  const lastP=pts.at(-1);
- g.innerHTML=ticks+line('y2','#8f8d86',1.5,true)+line('y','#d97757',2.5)+dots+
+ g.innerHTML=ticks+line('y2','#8f8d86',1.5,true)+line('y','#d97757',2.5)+tries+dots+
   `<text x="${L}" y="${H-6}" fill="#8f8d86" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#8f8d86" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
   `<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#d97757" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`;
 }
@@ -168,8 +169,8 @@ async function showLearning(statusLine){
  if(!rows.length)return false;
  const t0=rows[0].time,hrs=(rows.at(-1).time-t0)/3600,gain=(rows.at(-1).exact-rows[0].exact)*100,ups=rows.filter((r,i)=>i&&r.promoted).length;
  $('graph').style.display=''; $('gtitle').innerHTML='How smart your AI is';
- drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.practice??r.natural??r.typo,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
- const L=rows.at(-1);$('ptext').innerHTML=`Orange line: its test score, how often it gets a game idea exactly right (all tests together, including the hand-checked ones and your corrections). Dashed: its practice test on brand-new requests each round. Each dot: it got smarter and switched to the new version.${L.practice!=null?`<br>Last round: ${(L.practice*100).toFixed(1)}% right on its practice test; it drilled ${L.lessons} lessons${L.weakest&&L.weakest.length?`, mostly on ${esc(L.weakest.join(', '))}`:''}. ${L.promoted?'The new version was better, so it switched.':'The new version wasn\'t clearly better, so it kept the old one'+(L.why?` (${esc(L.why)})`:'')+'.'}`:''}<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
+ drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.practice??r.natural??r.typo,c:r.candidate,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
+ const L=rows.at(-1);$('ptext').innerHTML=`Orange line: its test score, how often it gets a game idea exactly right (all tests together, including the hand-checked ones and your corrections). Dashed: its practice test on brand-new requests each round. Filled dot: it got smarter and switched to the new version. Hollow dot: a new version it tried but didn't use (not clearly better), so the line stays flat until one wins.${L.practice!=null?`<br>Last round: ${(L.practice*100).toFixed(1)}% right on its practice test; it drilled ${L.lessons} lessons${L.weakest&&L.weakest.length?`, mostly on ${esc(L.weakest.join(', '))}`:''}. ${L.promoted?'The new version was better, so it switched.':'The new version wasn\'t clearly better, so it kept the old one'+(L.why?` (${esc(L.why)})`:'')+'.'}`:''}<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
  const tn=rows.at(-1).teacher;if(tn)$('ptext').innerHTML+=`<br>The teacher has written ${tn} real-person examples so far, and each round learns from all of them.`;
  return true;
 }

@@ -149,6 +149,7 @@ class H(BaseHTTPRequestHandler):
                 threading.Thread(target=run_job, args=(["gameai.learn"], "learn"), daemon=True).start()
                 return self.send(200, {"ok": True})
             os.makedirs("learn", exist_ok=True); open("learn/STOP", "w").close()
+            if os.path.exists("learn/RESUME"): os.remove("learn/RESUME")
             return self.send(200, {"ok": True, "stopping": True})
         if path == "/api/share":
             if b.get("on", True):
@@ -356,6 +357,7 @@ def kill_job():
     p = STATE.get("proc")
     if not (p and p.poll() is None): return False
     STATE["job"]["stopped"] = True
+    if os.path.exists("learn/RESUME"): os.remove("learn/RESUME")
     if os.name == "nt": subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     else:
         import signal
@@ -398,6 +400,10 @@ def auto_update():
             continue
         if STATE["job"]["running"]:
             STATE["update_waiting"] = True  # the page tells you it will install after the job
+            if STATE["job"].get("kind") == "learn" and not os.path.exists("learn/RESUME"):
+                os.makedirs("learn", exist_ok=True)
+                open("learn/RESUME", "w").close()  # learning pauses after this round, updates, then carries on
+                open("learn/STOP", "w").close()
             continue
         try:
             r = check(quiet=True)
@@ -420,6 +426,9 @@ def main():
                 STATE["pin"] = sh.get("pin"); start_share()
         except Exception:
             pass
+    if os.path.exists("learn/RESUME"):  # learning paused for an update: carry on
+        os.remove("learn/RESUME")
+        if STATE["model"]: threading.Thread(target=run_job, args=(["gameai.learn"], "learn"), daemon=True).start()
     if "--auto-quit" in sys.argv and "--stay" not in sys.argv: threading.Thread(target=watchdog, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     url = f"http://127.0.0.1:{PORT}/"
