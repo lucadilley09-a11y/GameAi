@@ -163,6 +163,24 @@ learned (all its layers and every word it knew; in a test it still got 93.8% of 
 catch-up), gets room for the new words, and a short catch-up training (5-10 minutes) teaches it the new parts.
 No training from scratch.
 
+## Phase 0: measuring before choosing the base model
+
+Type `/phase0 <part>` in the app (results are saved in `bench\phase0`; send them to Claude):
+
+| Part | What it does | Time |
+| --- | --- | --- |
+| `hardware` | GPU, CPU and disk speed, the same way every time (3 runs each) | ~2 min |
+| `fullstack` | the whole app at once: 1, 2, 4... playtesters and sandboxes, the AI answering meanwhile, peak RAM, GPU memory, pagefile; GPU vs software rendering | ~5 min |
+| `profile` | where the time goes in training and in making a game | ~5 min |
+| `licences` | licence and size of every candidate model (nothing downloaded) | seconds |
+| `bakeoff` | each candidate, one at a time: download, a real 30-minute QLoRA training test, conversion to llama.cpp, every test (game requests, JavaScript, instructions, knowledge, languages, HTML, pictures, sound, speed, speed with the playtesters running, fast drafting), the trained adapter in llama.cpp, then the model is deleted | hours (stop with `/stop`, it carries on later) |
+| `independence` | everything must work with the internet blocked (best with Wi-Fi off too) | ~1 min |
+| `report` | the bake-off table (`bench\phase0\bakeoff\summary.md`) | seconds |
+
+Only validation material is used to compare models; the sealed sets never choose anything. Sealed test sets are
+written by you (or ChatGPT/Gemini), never by Claude: `python -m gameai.sealed add game_requests your_file.jsonl`,
+then delete your copy. See `gameai/sealed.py` for the format, and `docs/RELEASE.md` for the release and rollback steps.
+
 ## Automatic updates
 
 The app updates itself from the project's GitHub repo (set in `update.json`): when `start.bat` starts,

@@ -125,6 +125,24 @@ case("puts the previous version back and remembers not to reinstall the broken o
 case("mode off never goes online", off_means_offline)
 case("won't reinstall a version that failed", skip_bad_version)
 
+def manifest_matches_repo():
+    """The published SHA-256 list must cover exactly the files of this version, with the right hashes."""
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root, capture_output=True, text=True, check=True).stdout.split()
+    except Exception:
+        return  # not a git copy (an installed app): nothing to check
+    listed = json.load(open(os.path.join(root, U.MANIFEST)))["files"]
+    code = {f for f in files if U.is_code(f)}
+    assert set(listed) == code, f"SHA-256 list is missing {sorted(code - set(listed))[:5]} or has extra {sorted(set(listed) - code)[:5]}"
+    for f in code:
+        assert hashlib.sha256(open(os.path.join(root, f), "rb").read()).hexdigest() == listed[f], f"{f} changed after the list was written"
+
+
+U.ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+case("the SHA-256 list matches every file of this version", manifest_matches_repo)
+
 for name, ok, why in results:
     print(("PASS " if ok else "FAIL ") + name + (f": {why}" if why else ""))
 print(f"{sum(ok for _, ok, _ in results)}/{len(results)} passed")

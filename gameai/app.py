@@ -180,6 +180,14 @@ class H(BaseHTTPRequestHandler):
             if size not in ("tiny", "small", "base", "large"): return self.send(400, {"error": "size must be tiny, small, base, large or coder"})
             threading.Thread(target=run_job, args=(["gameai.all", "--size", size],), daemon=True).start()
             return self.send(200, {"ok": True})
+        if path == "/api/phase0":  # measurements before choosing the base model (see gameai/phase0)
+            if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
+            what = str(b.get("what", "")).strip() or "help"
+            if what not in ("hardware", "fullstack", "profile", "licences", "bakeoff", "independence", "report", "all"):
+                return self.send(400, {"error": "use /phase0 hardware, fullstack, profile, licences, bakeoff, independence, report or all"})
+            extra = [x for x in str(b.get("args", "")).split() if re.fullmatch(r"[\w.\-]+", x)][:8]
+            threading.Thread(target=run_job, args=(["gameai.phase0", what, *extra], "phase0"), daemon=True).start()
+            return self.send(200, {"ok": True})
         if path == "/api/learn":
             if b.get("on", True):
                 if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})

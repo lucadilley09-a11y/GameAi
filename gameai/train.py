@@ -164,6 +164,10 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.backends.cuda.matmul.allow_tf32 = True
     tok = Tokenizer()
+    import shutil
+    free = shutil.disk_usage(".").free / 2**30
+    if free < 2:  # lean storage: stop cleanly instead of filling the disk halfway through
+        raise SystemExit(f"Only {free:.1f} GB of disk space is free. Training needs at least 2 GB: free up some space and try again.")
     t_load = time.time()
     print(f"Loading the practice data on {device}...", flush=True)
     rows = load_jsonl(f"{a.data}/train.jsonl")
