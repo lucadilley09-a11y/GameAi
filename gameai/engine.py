@@ -11,6 +11,8 @@ HP = {"easy": 5, "normal": 3, "hard": 2}
 PLAYER_SPEED = {"slow": 115, "normal": 150, "fast": 205}
 COUNT_BASE = {"few": 3, "some": 6, "many": 10}
 SURVIVE_SECONDS = {"easy": 20, "normal": 30, "hard": 45}
+TIME_LIMIT = {"none": None, "short": 60, "long": 120}
+DOORS_BY_SIZE = {"small": 1, "medium": 2, "big": 3}
 
 
 def expected_enemies(r):
@@ -94,6 +96,11 @@ def build(r, seed=0):
     if pu != "none":
         lvl["powerups"] = [(pu, *take(4)) for _ in range(5 if r["size"] == "big" else 3)]
     lvl["enemies"] = [(r["enemy"], *take(7)) for _ in range(expected_enemies(r))]
+    # step 4: the bigger game language (the browser engine builds the details; this records what the level has)
+    lvl["behavior"] = r.get("behavior", "chase") if lvl["enemies"] else None
+    lvl["doors"] = r.get("doors", "none"); lvl["n_doors"] = DOORS_BY_SIZE[r["size"]] if lvl["doors"] != "none" else 0
+    lvl["levels"] = int(r.get("levels", "1")); lvl["boss"] = r.get("boss", "no") == "yes"
+    lvl["time_limit"] = TIME_LIMIT[r.get("timer", "none")] if r["goal"] != "survive" else None
     return lvl
 
 
@@ -151,6 +158,11 @@ def instruction_match(requested, lvl):
         elif f == "goal": got = r["goal"] == want and (bool(lvl["items"]) if want in ("coins", "gems") else lvl["exit"] is not None if want == "exit" else lvl["survive_seconds"] is not None)
         elif f == "difficulty": got = lvl["hp"] == HP[want]
         elif f == "size": got = (lvl["cols"], lvl["rows"]) == MAP_SIZE[want]
+        elif f == "behavior": got = lvl.get("behavior") == want
+        elif f == "doors": got = lvl.get("doors") == want and lvl.get("n_doors", 0) > 0
+        elif f == "levels": got = lvl.get("levels") == int(want)
+        elif f == "boss": got = bool(lvl.get("boss"))
+        elif f == "timer": got = lvl.get("time_limit") == TIME_LIMIT[want] or r["goal"] == "survive"
         elif f == "powerup": got = (not lvl["powerups"] or any(x["trig"] == "powerup" for x in lvl.get("rules", []))) if want == "none" else bool(lvl["powerups"]) and all(p[0] == want for p in lvl["powerups"])
         ok += got
     return ok, total

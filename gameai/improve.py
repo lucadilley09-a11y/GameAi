@@ -23,7 +23,13 @@ MAX_LESSONS = 15000
 
 
 def load_jsonl(p):
-    return [json.loads(l) for l in open(p, encoding="utf-8")] if os.path.exists(p) else []
+    """Examples saved before a part of the game language existed count as not mentioning it."""
+    from .recipe import fill_defaults
+    if not os.path.exists(p): return []
+    rows = [json.loads(l) for l in open(p, encoding="utf-8")]
+    for r in rows:
+        if "recipe" in r: fill_defaults(r["recipe"])
+    return rows
 
 
 def main():

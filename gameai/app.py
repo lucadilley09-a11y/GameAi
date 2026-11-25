@@ -171,7 +171,8 @@ class H(BaseHTTPRequestHandler):
         if path in ("/api/correct", "/api/rate"):
             from .recipe import OUT_FIELDS, is_valid_out
             prompt, rec = str(b.get("prompt", "")).strip()[:240], b.get("recipe") or {}
-            rec = {f: str(rec.get(f, "")) for f in OUT_FIELDS}
+            from .recipe import FIELDS
+            rec = {f: str(rec.get(f) or ("auto" if f in FIELDS else "none")) for f in OUT_FIELDS}
             if not prompt or not is_valid_out(rec): return self.send(400, {"error": "that answer doesn't fit the game language"})
             os.makedirs("memory", exist_ok=True)
             row = json.dumps({"prompt": prompt, "recipe": rec, "time": time.time()}) + "\n"

@@ -37,6 +37,11 @@ def spec(label):
     if label["difficulty"] != AUTO: s.append(f"difficulty: {label['difficulty']}")
     if label["size"] != AUTO: s.append(f"map size: {label['size']}")
     if label["powerup"] != AUTO: s.append("no power-ups" if label["powerup"] == "none" else f"power-ups: {label['powerup']}")
+    if label.get("behavior", AUTO) != AUTO: s.append({"patrol": "the enemies patrol back and forth", "shoot": "the enemies shoot at you", "wander": "the enemies wander around instead of chasing"}[label["behavior"]])
+    if label.get("doors", AUTO) != AUTO: s.append({"keys": "locked doors you open with keys", "switches": "gates you open with switches"}[label["doors"]])
+    if label.get("levels", AUTO) != AUTO: s.append(f"{label['levels']} levels")
+    if label.get("boss", AUTO) != AUTO: s.append("a boss on the last level")
+    if label.get("timer", AUTO) != AUTO: s.append({"short": "a time limit of about a minute", "long": "a time limit of about two minutes"}[label["timer"]])
     for r in rules_of(label):
         s.append("rule: " + TRIG[r["trig"]].format(**r) + ", " + ACT[r["act"]].format(**r).replace("1 more enemies", "1 more enemy"))
     return s

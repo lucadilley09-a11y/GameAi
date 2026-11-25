@@ -18,7 +18,13 @@ from .track import Run
 
 
 def load_jsonl(path):
-    return [json.loads(l) for l in open(path)]
+    """Examples saved before a part of the game language existed count as not mentioning it."""
+    from .recipe import fill_defaults
+    if not os.path.exists(path): return []
+    rows = [json.loads(l) for l in open(path, encoding="utf-8")]
+    for r in rows:
+        if "recipe" in r: fill_defaults(r["recipe"])
+    return rows
 
 
 def encode(rows, tok):

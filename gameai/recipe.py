@@ -13,6 +13,11 @@ decoding enforces it, so every output is valid by construction.
     difficulty := "difficulty=" ( easy | hard | auto )
     size       := "size=" ( small | big | auto )
     powerup    := "powerup=" ( hearts | boots | shield | none | auto )
+    behavior   := "behavior=" ( patrol | shoot | wander | auto )      (auto: enemies chase you)
+    doors      := "doors=" ( keys | switches | auto )                 (auto: no doors)
+    levels     := "levels=" ( 3 | 5 | auto )                          (auto: 1 level)
+    boss       := "boss=" ( yes | auto )                              (auto: no boss)
+    timer      := "timer=" ( short | long | auto )                    (auto: no time limit)
 
 "auto" means the prompt did not say; the engine fills it in (resolve()).
 
@@ -36,6 +41,12 @@ FIELDS = {
     "difficulty": ["easy", "hard"],
     "size": ["small", "big"],
     "powerup": ["hearts", "boots", "shield", "none"],
+    # Phase 3 (step 4): a bigger game language
+    "behavior": ["patrol", "shoot", "wander"],
+    "doors": ["keys", "switches"],
+    "levels": ["3", "5"],
+    "boss": ["yes"],
+    "timer": ["short", "long"],
 }
 AUTO = "auto"
 FIELD_NAMES = list(FIELDS)
@@ -73,6 +84,7 @@ def resolve(recipe, rng=None, base=None):
     fill("count", "some"); fill("speed", "normal"); fill("difficulty", "normal")
     fill("size", "medium"); fill("powerup", "none")
     fill("goal", rng.choice(["coins", "gems", "exit", "survive"]))
+    fill("behavior", "chase"); fill("doors", "none"); fill("levels", "1"); fill("boss", "no"); fill("timer", "none")
     if r["enemy"] == "none" and recipe["count"] != AUTO and recipe["enemy"] == AUTO:
         r["enemy"] = THEME_ENEMY[r["theme"]]
     if r["enemy"] == "none" and r["goal"] == "survive":
@@ -87,7 +99,14 @@ RULE_VALUES = {"trig": TRIGS, "tn": ["none", "3", "5", "10", "20"], "act": ACTS,
 MAX_RULES = 2
 RULE_FIELDS = [f"r{i}_{k}" for i in range(1, MAX_RULES + 1) for k in ("trig", "tn", "act", "an")]
 OUT_FIELDS = FIELD_NAMES + RULE_FIELDS
-GRAMMAR_VERSION = 2
+GRAMMAR_VERSION = 3  # 3: behavior, doors, levels, boss, timer (an AI trained on version 2 needs one /train)
+
+
+def fill_defaults(out):
+    """Older saved examples (before a field existed) count as not mentioning it."""
+    for f in OUT_FIELDS:
+        if f not in out: out[f] = AUTO if f in FIELDS else "none"
+    return out
 
 
 def out_options(field):

@@ -127,7 +127,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 let F={},FN=[],trained=false,AI=null;
 
 /*ENGINE*/
-window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a),goExplore:(...a)=>goExplore(...a)};  // for automatic tests
+window.GAMEAI_TEST={playtest:(...a)=>playtest(...a),bestLevel:(...a)=>bestLevel(...a),goExplore:(...a)=>goExplore(...a),build:r=>build(r),state:()=>S};  // for automatic tests
 
 const log=$('log'),inp=$('in');
 const say=(html,cls='a')=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
@@ -152,7 +152,7 @@ async function boot(){
  if(API&&API.app){
   const remote=!/^(127\.0\.0\.1|localhost)$/.test(location.hostname);$('mode').textContent=(remote?'Connected to your PC · ':'PC app · ')+(API.gpu||'CPU');
   if(API.loaded){const ai=await fetch('api/model').then(r=>r.json()).catch(()=>null);if(ai)useAI(createAI(ai,b64buf(ai.b64)),'your trained AI, running on '+(API.gpu?'the GPU':'the CPU'))}
-  else say(API.note?'Your AI needs one retrain for the new game rules. Type /train (about 10-30 minutes). Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
+  else say(API.note?'The game language got bigger (enemy behaviours, doors, levels, bosses, timers), so your AI needs one retrain to learn it. Type /train base for the bigger, smarter AI (about 30-60 minutes on your GPU), or /train for the usual size. Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
   if(API.fresh)say(`Right now it gets about ${Math.floor(API.fresh.exact*1000)/10}% of game ideas exactly right.`,'d');
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
    if(st){sideAI(st);sideLearn(st)}
@@ -326,12 +326,17 @@ const ruleText=(x,r)=>{const t=TRIG_T[x.trig](x,r);return t[0].toUpperCase()+t.s
 function rulesFrom(pred){const out=[];for(let i=1;i<=2;i++){const t=pred['r'+i+'_trig'];if(t&&t.value!=='none')out.push({trig:t.value,tn:pred['r'+i+'_tn'].value,act:pred['r'+i+'_act'].value,an:pred['r'+i+'_an'].value})}return out}
 function describe(r,src,edit){
  if(edit){const ch=FN.filter(f=>src[f]==='ai').map(f=>({difficulty:r.difficulty==='hard'?'harder':r.difficulty==='easy'?'easier':'normal difficulty',speed:r.speed==='fast'?'faster':r.speed==='slow'?'slower':'normal speed',size:r.size==='big'?'a bigger map':r.size==='small'?'a smaller map':'a medium map',
-  powerup:r.powerup==='none'?'no power-ups':'added '+({hearts:'health hearts',boots:'speed boots',shield:'shields'})[r.powerup],count:HOW[r.count]+' enemies',enemy:r.enemy==='none'?'no enemies':r.enemy+' as the enemies',theme:'moved it to '+PLACE[r.theme],player:'you\'re now a '+r.player,goal:'the goal is now '+GOAL[r.goal]})[f]);
+  powerup:r.powerup==='none'?'no power-ups':'added '+({hearts:'health hearts',boots:'speed boots',shield:'shields'})[r.powerup],count:HOW[r.count]+' enemies',enemy:r.enemy==='none'?'no enemies':r.enemy+' as the enemies',theme:'moved it to '+PLACE[r.theme],player:'you\'re now a '+r.player,goal:'the goal is now '+GOAL[r.goal],behavior:r.behavior==='chase'?'enemies chase you again':'enemies now '+({patrol:'patrol',shoot:'shoot at you',wander:'wander around'})[r.behavior],doors:r.doors==='none'?'no doors':'added '+(r.doors==='keys'?'locked doors and keys':'gates and switches'),levels:r.levels+' level'+(r.levels==='1'?'':'s'),boss:r.boss==='yes'?'added a boss':'no boss',timer:r.timer==='none'?'no time limit':(r.timer==='short'?'a one-minute':'a two-minute')+' time limit'})[f]);
   if(src.rules==='ai')ch.push('new rules: '+r.rules.map(x=>ruleText(x,r)).join(' ').toLowerCase().replace(/\.$/,''));
   return ch.length?`Done: ${ch.join(', ')}. Everything else is the same.`:`I couldn't tell what to change, so it's the same game. Try something like "make it harder" or "add speed boots".`}
  let t=`Here's your game: you're a ${r.player} in ${PLACE[r.theme]}, ${GOAL[r.goal]}`+(r.enemy==='none'?', with nothing chasing you.':` while ${HOW[r.count]} ${r.enemy} chase you.`);
  const x=[];if(r.speed!=='normal')x.push(`you move ${r.speed==='fast'?'fast':'slowly'}`);if(r.difficulty!=='normal')x.push(`it's ${r.difficulty}`);if(r.size!=='medium')x.push(`the map is ${r.size}`);
  if(r.powerup!=='none')x.push(`there are ${({hearts:'health hearts',boots:'speed boots',shield:'shields'})[r.powerup]} to grab`);
+ if(r.behavior&&r.behavior!=='chase'&&r.enemy!=='none')x.push({patrol:'the enemies patrol back and forth',shoot:'the enemies shoot at you',wander:'the enemies wander instead of chasing you'}[r.behavior]);
+ if(r.doors&&r.doors!=='none')x.push(r.doors==='keys'?'locked doors block the way, so find their keys':'gates block the way, so step on the switches');
+ if(+r.levels>1)x.push(`there are ${r.levels} levels`);
+ if(r.boss==='yes')x.push(+r.levels>1?'a boss waits on the last level':'a boss is waiting for you');
+ if(r.timer&&r.timer!=='none'&&r.goal!=='survive')x.push(`you have ${r.timer==='short'?'one minute':'two minutes'}`);
  if(x.length)t+=' Also, '+x.join(', ')+'.';
  if(r.rules&&r.rules.length)t+=' Rules: '+r.rules.map(x=>ruleText(x,r)).join(' ');
  const picked=['theme','player','goal','enemy'].filter(f=>src[f]==='auto').map(f=>({theme:'the place',player:'the character',goal:'the goal',enemy:'the enemies'})[f]);
@@ -355,7 +360,7 @@ async function finish(prompt,pred,edit,ms){
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
-const HELP=[['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
+const HELP=[['/sound on|off','turn the game sounds on or off'],['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
  ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 15 seconds)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
 function teach(prompt,rec,quiet){
@@ -455,6 +460,7 @@ function command(line){
    for(const [f,v] of Object.entries(fix))if(v!=='auto')lastGame.r[f]=v;build(lastGame.r);teach(lastGame.prompt,rec,false);break}
   case '/versions':if(needApp())break;fetch('api/versions').then(r=>r.json()).then(vs=>say(vs.length?'<table>'+vs.map(v=>`<tr><td class="${v.in_use?'k':'d'}">v${String(v.version).padStart(3,'0')}${v.in_use?' (in use)':''}</td><td>${v.total!=null?(v.total*100).toFixed(2)+'%':''}</td><td class="d">${v.time?new Date(v.time*1000).toLocaleString():''}</td></tr>`).join('')+'</table><span class="d">/rollback goes back one version; /rollback 3 goes to v003.</span>':'No saved versions yet. They are kept from the next time your AI improves.','d'));break;
   case '/rollback':if(needApp())break;post('api/rollback',{n:+arg||null}).then(r=>say(r.ok?`Now using version ${r.version}. Learning continues from this one.`:esc(r.error),r.ok?'a':'w'));break;
+  case '/sound':{const off=arg==='off'||(!arg&&localStorage.getItem('gameai.mute')!=='1');try{localStorage.setItem('gameai.mute',off?'1':'0')}catch(e){}say(off?'Sound off. /sound on brings it back.':'Sound on.','d');break}
   case '/questions':askOn=arg!=='off';store.set('gameai.ask',askOn);say(`Questions ${askOn?'on':'off'}.`);break;
   case '/load':$('files').click();say('Pick gameai-model.json (from the for-chromebook folder on your PC).','d');break;
   case '/ratings':{const t=JSON.stringify(store.get('gameai.ratings',[]));navigator.clipboard?.writeText(t).then(()=>say('Ratings copied. Paste them into a file on your PC.'),()=>say('Copy was blocked by the browser.','w'));break}
@@ -472,7 +478,7 @@ inp.addEventListener('keydown',e=>{
  if(e.key==='Enter'){const v=inp.value;inp.value='';if(menu&&!v.trim()){const sel=menu.querySelector('.sel');command(sel?sel.dataset.v:'');return}if(v.trim()||pending)command(v.trim())}});
 addEventListener('keydown',e=>{if(e.target===inp)return;keys[e.code]=true;
  if(S&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
- if(S&&S.state!=='play'&&(e.code==='KeyR'||e.code==='Enter'))build(S.r);
+ if(S&&S.state!=='play'&&(e.code==='KeyR'||e.code==='Enter'))build({...S.r,level:1});
  if(e.key==='/'&&e.target!==inp){e.preventDefault();inp.focus();inp.value='/'}});
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false});

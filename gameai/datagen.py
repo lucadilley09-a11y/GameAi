@@ -43,6 +43,16 @@ SYN = {
                 "boots": ["speed boots", "speed boosts", "speed powerups", "boots"],
                 "shield": ["shields", "shield powerups", "invincibility", "bubble shields"],
                 "none": ["no powerups", "no power ups", "no items"]},
+    "behavior": {"patrol": ["enemies that patrol", "patrolling guards", "guards on patrol routes", "enemies walking back and forth", "sentries", "patrolling monsters"],
+                 "shoot": ["enemies that shoot", "shooting enemies", "monsters that shoot at you", "enemies that fire lasers", "turrets", "enemies that throw fireballs", "shooters"],
+                 "wander": ["enemies that wander around", "wandering monsters", "enemies that don't chase you", "roaming enemies", "lazy enemies", "aimless monsters"]},
+    "doors": {"keys": ["locked doors and keys", "doors you open with keys", "key and door puzzles", "locked rooms", "keys to unlock doors", "locked doors"],
+              "switches": ["switches that open gates", "levers", "pressure plates", "buttons that open doors", "switch puzzles", "gates and levers"]},
+    "levels": {"3": ["3 levels", "three levels", "three stages", "3 stages", "a few levels", "multiple levels"],
+               "5": ["5 levels", "five levels", "five stages", "lots of levels", "a whole campaign", "many levels"]},
+    "boss": {"yes": ["a boss", "a boss fight", "a final boss", "a boss battle", "a big boss", "a boss at the end"]},
+    "timer": {"short": ["a time limit", "against the clock", "a 60 second timer", "a timer", "one minute to win", "speedrun style"],
+              "long": ["a 2 minute timer", "two minutes to win", "a long timer", "120 seconds", "a relaxed time limit"]},
 }
 assert all(set(SYN[f]) == set(FIELDS[f]) for f in FIELDS), "synonyms must cover every grammar value"
 
@@ -58,8 +68,14 @@ TPL = {
     "difficulty": ["W mode", "make it W", "W difficulty", "W", "W please"],
     "size": ["W", "on a W", "W please", "with a W"],
     "powerup": ["with W", "W to pick up", "W", "add W"],
+    "behavior": ["W", "with W", "add W", "make it W"],
+    "doors": ["W", "with W", "add W", "puzzles with W"],
+    "levels": ["W", "with W", "make it W", "W long"],
+    "boss": ["W", "with W", "add W", "and W"],
+    "timer": ["W", "with W", "add W", "beat it with W"],
 }
-PROB = {"theme": .7, "player": .65, "enemy": .65, "count": .45, "speed": .4, "goal": .6, "difficulty": .4, "size": .3, "powerup": .3}
+PROB = {"theme": .7, "player": .65, "enemy": .65, "count": .45, "speed": .4, "goal": .6, "difficulty": .4, "size": .3, "powerup": .3,
+        "behavior": .22, "doors": .2, "levels": .2, "boss": .15, "timer": .15}
 
 
 RTRIG = {
@@ -144,6 +160,11 @@ def make_example(rng, n_typos=0, want=None):
     else:
         L["count"] = AUTO
     for f in ("speed", "goal", "difficulty", "size", "powerup"):
+        w = pick(f)
+        if w: put(f, w)
+    for f in ("behavior", "doors", "levels", "boss", "timer"):  # never contradict the rest of the request
+        if want is None and ((f == "behavior" and L["enemy"] == "none") or (f in ("doors", "timer") and L["goal"] == "survive")):
+            L[f] = AUTO; continue
         w = pick(f)
         if w: put(f, w)
     rng.shuffle(parts)

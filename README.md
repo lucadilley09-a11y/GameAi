@@ -44,6 +44,17 @@ Your Chromebook can start training, learning and the teacher; they run on your P
 3. Optional: `/autostart on` on the PC starts Game AI hidden whenever the PC turns on, so the Chromebook can always reach it.
    If the file can't find your PC (its address changed), type `/pc <address> <code>` with what `/share` shows.
 
+## The game language (step 4)
+
+Besides the place, player, enemies, goal, difficulty, map size, power-ups and up to 2 rules, a game can have:
+- **Enemy behaviour**: patrol back and forth, shoot at you, or wander (default: chase you)
+- **Doors**: locked doors you open with keys, or gates you open with switches (every level stays solvable)
+- **Levels**: 3 or 5 levels, each a bit harder; **a boss** on the last level (big, shoots in 3 directions)
+- **A timer**: about one or two minutes to win
+Every game also has a score (and your best score) and little sound effects (`/sound off` to mute).
+This is game language version 3: an AI trained before it needs one `/train` to learn the new parts
+(a good moment for `/train base`).
+
 ## Game rules (Phase 2)
 
 Describe rules in plain words and the AI writes them into the game, up to two per game, for example
