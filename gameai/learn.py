@@ -12,7 +12,7 @@ Turn that off with GAMEAI_LEARN_TEACHER=0.
 Stop: /learn off in the app, Ctrl+C here, or create the file learn/STOP."""
 import json, os, subprocess, sys, time
 
-STEPS = int(os.environ.get("GAMEAI_LEARN_STEPS", 800))  # training steps per round
+STEPS = int(os.environ.get("GAMEAI_LEARN_STEPS", 1200))  # training steps per round (quality over speed)
 PRACTICE = int(os.environ.get("GAMEAI_LEARN_DATA", 40_000))  # new practice prompts per round
 
 

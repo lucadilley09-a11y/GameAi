@@ -99,16 +99,17 @@ Always-on learning keeps whatever size is in use. The Chromebook file stores the
 (1 byte per weight plus a scale per row, about 4x smaller, same answers on 397 of 400 test requests);
 the PC keeps full precision.
 
-## Playtesters
+## Playtesters and game quality
 
-Every new game is tested before you see it, by three testers (cheapest first, as in the research plan):
-1. **Exact check**: every item, key and the exit can be reached.
-2. **Bots at three skill levels** (beginner, average, expert) play in fast-forward; who wins gives the difficulty.
-3. **Go-Explore search** (saves good positions and keeps exploring from them) checks levels the bots lost.
+Every new game is tested before you see it, by three testers (as in the research plan): an exact check that
+every goal can be reached, bots at three skill levels (beginner, average, expert) that play in fast-forward,
+and Go-Explore search for levels the bots lost. They run in background workers on all your processor cores.
 
-It tries up to 1, 6 or 16 versions (`/quality fast|normal|best`), stops early when one is proven beatable and
-as hard as you asked, and if nothing can be beaten it tones the game down a little (fewer enemies).
-In a test of 150 random games: 91% proven beatable, easy/normal/hard measured in the right order, ~0.3 s each.
+Quality over speed: by default (`/quality best`) it tries up to 16 versions (`max` = 32) and keeps the one that is
+proven beatable, as hard as you asked, and best on the research's quality measures: not over in a few seconds
+and not a slog (time to beat it), you actually explore the map (share of the map used), some tension (close
+calls or hits), and later levels not easier than the first. Coins, gems and keys are spread across the map.
+In a test of 30 random games: 90% proven beatable, average quality 78%, 63% rated great.
 
 ## Always-on learning and the self-improving loop
 

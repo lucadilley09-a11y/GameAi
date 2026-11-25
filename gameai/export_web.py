@@ -52,7 +52,7 @@ def build_page(builtin=None, pc=None):
     engine = play[play.index("// ---------- engine ----------"):play.index("// ---------- prompt -> recipe -> game ----------")]
     engine = engine.replace("Describe a game and press New game", "Type a game idea in the terminal").replace("Training the AI…", "Loading the AI…")
     page = open(os.path.join(HERE, "web_template.html"), encoding="utf-8").read()
-    page = page.replace("/*WEB_AI*/", open(os.path.join(HERE, "web_ai.js"), encoding="utf-8").read()).replace("/*ENGINE*/", engine)
+    page = page.replace("/*WEB_AI*/", open(os.path.join(HERE, "web_ai.js"), encoding="utf-8").read()).replace("/*ENGINE*/", engine + "\nwindow.GAMEAI_ENGINE_SRC=" + json.dumps(engine).replace("</", "<\\/") + ";")
     if builtin:  # one-file Chromebook app: the AI and the game template travel inside the page
         tpl = json.dumps(play).replace("</", "<\\/")
         page = page.replace("/*BUILTIN*/", "window.GAMEAI_BUILTIN=" + builtin + ";window.GAMEAI_GAME_TPL=" + tpl + ";")

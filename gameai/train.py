@@ -48,6 +48,13 @@ class GpuData:
         self.X = torch.tensor([[tok.pad] * (L - len(p)) + p for p, _ in pairs], dtype=small, device=device)
         self.R = torch.tensor([r for _, r in pairs], dtype=small, device=device)
         self.L, self.n = L, len(pairs)
+        self.order = torch.argsort(self.lens)  # examples sorted by length, for batches with little padding
+
+    def sample(self, B):
+        """a random batch of examples of similar length: much less padding (wasted work) than fully random,
+        and still random: each batch comes from a random window of 16x its size"""
+        w = min(self.n, B * 16); start = int(torch.randint(0, self.n - w + 1, (1,)))
+        return self.order[start + torch.randperm(w, device=self.order.device)[:B]]
 
     def batch(self, idx):
         P = int(self.lens[idx].max())
@@ -180,7 +187,7 @@ def main():
         for o in opts:
             for g in o.param_groups: g["lr"] = g["base_lr"] * wsd(step, a.steps)
         model.train()
-        idx = torch.randint(train_d.n, (a.batch,), device=device)
+        idx = train_d.sample(a.batch)
         while True:
             try:
                 # the batch is done in smaller pieces that add up (same learning, much less GPU memory)

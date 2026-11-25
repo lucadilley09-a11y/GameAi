@@ -86,7 +86,7 @@ def split_out(text):
     return head.replace("spec:", "", 1).strip(), code.strip()
 
 
-def write(model, tok, prompt, device, tries=8, temp=0.8):
+def write(model, tok, prompt, device, tries=16, temp=0.8):  # quality over speed: 16 tries
     """-> {"ok", "spec", "code", "tries", "reason"}: the first try that is safe and works"""
     t0, why = time.time(), "no tries"
     cands = sample(model, tok, [prompt], device, n=tries, temp=temp)[0]

@@ -264,6 +264,11 @@ function buildLevel(r){
  }
  grid.forEach((row,y)=>row.forEach((v,x)=>{if(!v&&dist[y][x]<0)grid[y][x]=1}));
  const used=new Set(['2,2']);const doors=placeDoors(r,grid,cells,used);
+ const spread=k=>{ // place k things far apart and away from the start, so the whole map gets explored
+  const out=[],maxd=Math.max(1,...cells.map(c=>c.d)),pool=cells.filter(c=>c.d>=Math.max(3,maxd*.15)&&!used.has(c.x+','+c.y));
+  for(let i=0;i<k&&pool.length;i++){let best=null,bs=-1;for(let t=0;t<40;t++){const c=pool[ri(pool.length)];const m=Math.min(c.d*.6,...out.map(o=>Math.abs(o.x-c.x)+Math.abs(o.y-c.y)));const sc=m+Math.random();if(sc>bs){bs=sc;best=c}}
+   used.add(best.x+','+best.y);out.push(best);pool.splice(pool.indexOf(best),1)}
+  return out.map(c=>({x:c.x*TS+16,y:c.y*TS+16}))};
  const take=minD=>{const c=shuffle(cells.filter(c=>c.d>=minD&&!used.has(c.x+','+c.y)))[0]||cells[ri(cells.length)];used.add(c.x+','+c.y);return {x:c.x*TS+16,y:c.y*TS+16}};
  const hp={easy:5,normal:3,hard:2}[r.difficulty],lv=r.level||1,lvs=+(r.levels||1)||1;
  const s={r,grid,cols,rows,pal:PAL[r.theme],t:0,state:'play',p:{x:2*TS+16,y:2*TS+16,r:11},inv:0,boost:0,shield:0,hp,maxhp:hp,
@@ -273,8 +278,8 @@ function buildLevel(r){
  const rules=r.rules||[],needN=Math.max(0,...rules.filter(x=>x.trig==='score').map(x=>+x.tn)),usesCollect=rules.some(x=>x.trig==='collect'||x.trig==='score');
  s.rules=rules.map(x=>({...x,acc:0,fired:false}));s.collected=0;s.freeze=0;s.msg=null;s.keys=[];s.spawnType=r.enemy==='none'?THEME_EN[r.theme]:r.enemy;
  s.exitLocked=rules.some(x=>x.act==='open_exit');s.espd0=0;
- if(r.goal==='coins'||r.goal==='gems'){s.need=Math.max(needN,Math.round((r.goal==='coins'?10:6)*Math.sqrt(area)));for(let i=0;i<s.need;i++)s.items.push(take(3))}
- else if(usesCollect)for(let i=0;i<Math.max(3,needN);i++)s.keys.push(take(3));
+ if(r.goal==='coins'||r.goal==='gems'){s.need=Math.max(needN,Math.round((r.goal==='coins'?10:6)*Math.sqrt(area)));s.items.push(...spread(s.need));while(s.items.length<s.need)s.items.push(take(3))}
+ else if(usesCollect){const k=Math.max(3,needN);s.keys.push(...spread(k));while(s.keys.length<k)s.keys.push(take(3))}
  if(r.goal==='exit'||s.exitLocked){const far=cells.reduce((a,b)=>b.d>a.d?b:a);s.exit={x:far.x*TS+16,y:far.y*TS+16};used.add(far.x+','+far.y)}
  const pu=r.powerup==='none'&&rules.some(x=>x.trig==='powerup')?'hearts':r.powerup;
  if(pu!=='none')for(let i=0;i<(r.size==='big'?5:3);i++)s.pups.push({...take(4),type:pu});
@@ -495,8 +500,10 @@ function playtest(r,maxT,skill){
  build(r);const s=S;s.stat={hits:0,acts:0};s.onlyThis=true;const b={repath:0,path:null,lx:0,ly:0,still:0,wig:0,wait:0,skill:SKILL[skill||'expert']};
  const paths=provePaths();
  const cap=maxT||(r.goal==='survive'?s.survive+2:s.limit?s.limit+1:150),dt=1/30;
- try{while(s.state==='play'&&s.t<cap){botStep(b);update(dt)}}
- finally{playtest.last={win:s.state==='win',lose:s.state==='lose',timeout:s.state==='play',time:s.t,hits:s.stat.hits,maxhp:s.maxhp,acts:s.stat.acts,paths};
+ let open=0;s.grid.forEach(r=>r.forEach(v=>open+=!v));const seen=new Set();let close=0,wasClose=false;
+ try{while(s.state==='play'&&s.t<cap){botStep(b);update(dt);seen.add((s.p.x/TS|0)+','+(s.p.y/TS|0));
+  let m=1e9;for(const e of s.enemies)m=Math.min(m,Math.hypot(e.x-s.p.x,e.y-s.p.y));const c=m<40;if(c&&!wasClose)close++;wasClose=c}}
+ finally{playtest.last={win:s.state==='win',lose:s.state==='lose',timeout:s.state==='play',time:s.t,hits:s.stat.hits,maxhp:s.maxhp,acts:s.stat.acts,paths,coverage:seen.size/Math.max(1,open),close};
   S=keep;for(const k in keys)keys[k]=false;Object.assign(keys,saved)}
  return playtest.last;
 }
@@ -528,40 +535,63 @@ function hardness(res){ // 0 = even a beginner wins easily, 1 = even the expert 
  const w=k=>res[k].win?Math.min(1,res[k].hits/res[k].maxhp):1;
  return .25*w('beginner')+.35*w('average')+.4*w('expert');
 }
+const TIME_BAND={easy:[15,75],normal:[25,110],hard:[35,150]};
+function gameQuality(R,j){
+ // 0..1: is it a GOOD game, not just a beatable one? (measured on the expert bot's play)
+ const e=j.runs.expert;if(!e.win)return 0;const q=[];
+ if(R.goal!=='survive'){const sz={small:.6,medium:1,big:1.4}[R.size]||1,[lo,hi]=(TIME_BAND[R.difficulty]||TIME_BAND.normal).map(v=>v*sz);q.push(e.time>=lo&&e.time<=hi?1:e.time<lo?e.time/lo:hi/e.time)}  // not over in 5 seconds, not a slog
+ q.push(Math.min(1,e.coverage/(R.goal==='exit'?.2:.3)));                       // you actually explore the map
+ q.push(R.difficulty==='easy'?1:Math.min(1,(e.hits+e.close/3)/1.5));            // some tension: close calls or a hit
+ if(j.last)q.push(j.lastHard>=j.firstHard-.05?1:.3);                            // later levels are not easier than the first
+ return q.reduce((a,b)=>a+b,0)/q.length;
+}
 function judge(R){
  // test one version: all three bots, then Go-Explore if no bot won; for several levels, also the last level
  const one=Q=>{const ex=playtest(Q,0,'expert');
   if(!ex.paths)return {runs:{expert:ex,average:ex,beginner:ex},proven:false,how:'',paths:false,hard:1};  // something can't be reached: no point playing it
   const runs={expert:ex,average:playtest(Q,0,'average'),beginner:playtest(Q,0,'beginner')};
   let proven=runs.expert.win||runs.average.win||runs.beginner.win,how=proven?'bot':'';
-  if(!proven&&runs.expert.paths){const g=goExplore(Q,250);if(g.win){proven=true;how='search'}}
+  if(!proven&&runs.expert.paths){const g=goExplore(Q,500);if(g.win){proven=true;how='search'}}
   return {runs,proven,how,paths:runs.expert.paths,hard:hardness(runs)}};
  const a=one(R),lv=+(R.levels||1)||1;if(lv<2||!a.proven)return a;  // first level can't be won: no need to test the last
  const z=one({...R,level:lv});
- return {runs:a.runs,last:z.runs,proven:a.proven&&z.proven,how:a.how==='search'||z.how==='search'?'search':a.how,paths:a.paths&&z.paths,hard:(a.hard+z.hard)/2};
+ return {runs:a.runs,last:z.runs,proven:a.proven&&z.proven,how:a.how==='search'||z.how==='search'?'search':a.how,paths:a.paths&&z.paths,hard:(a.hard+z.hard)/2,firstHard:a.hard,lastHard:z.hard};
 }
+function scoreOf(R,j,target){const q=gameQuality(R,j);return {q,score:(j.proven?0:10)+(j.paths?0:20)+Math.abs(j.hard-target)+(1-q)*.6+(R.balance?1-R.balance:0)}}
 async function bestLevel(r,n,onStep){
- // Try up to n versions of this game. Keep one that is proven beatable and whose difficulty is closest to
- // what was asked; stop early when one is a clear match ("thinking time": easy games stay instant).
- const target=HARD_TARGET[r.difficulty]??.45,cands=[];
- for(let i=0;i<n;i++){
-  const seed=(Math.random()*2**31)|0,j=judge({...r,seed});
-  const c={seed,...j,score:(j.proven?0:10)+(j.paths?0:20)+Math.abs(j.hard-target)};
-  cands.push(c);if(onStep)await onStep(i+1,n);
-  if(c.proven&&Math.abs(c.hard-target)<.12)break;
- }
+ // Try up to n versions of this game (in parallel, in the background when it can). Keep the one that is
+ // proven beatable, closest to the difficulty asked for, and best on the quality measures; stop early only
+ // when one is clearly good.
+ const target=HARD_TARGET[r.difficulty]??.45,cands=[],pool=judgePool();
+ const run=async list=>{const out=await Promise.all(list.map(R=>pool?pool(R):Promise.resolve(judge(R))));
+  out.forEach((j,k)=>{const R=list[k];cands.push({seed:R.seed,balance:R.balance,...j,...scoreOf(R,j,target)})});return out};
+ const W=pool?pool.size:1;let done=0;
+ while(done<n){const k=Math.min(W,n-done),list=[];for(let i=0;i<k;i++)list.push({...r,seed:(Math.random()*2**31)|0});
+  await run(list);done+=k;if(onStep)await onStep(done,n);
+  if(cands.some(c=>c.proven&&Math.abs(c.hard-target)<.12&&c.q>=.8))break;}
  // auto-balance: nothing could be beaten, so tone it down a little (fewer enemies) and try again
- for(const bal of [.75,.55,.35]){
-  if(cands.some(c=>c.proven))break;
-  for(let i=0;i<3;i++){
-   const seed=(Math.random()*2**31)|0,j=judge({...r,seed,balance:bal});
-   cands.push({seed,balance:bal,...j,score:(j.proven?0:10)+(j.paths?0:20)+Math.abs(j.hard-target)+(1-bal)});
-   if(j.proven)break;
-  }
- }
+ for(const bal of [.75,.55,.35]){if(cands.some(c=>c.proven))break;
+  const list=[];for(let i=0;i<Math.max(3,W);i++)list.push({...r,seed:(Math.random()*2**31)|0,balance:bal});await run(list)}
  cands.sort((a,b)=>a.score-b.score);const best=cands[0];
  best.wins=['beginner','average','expert'].filter(k=>best.runs[k].win).length;
  return {best,tried:cands.length,max:n};
+}
+let _pool;
+function judgePool(){
+ // background workers that each run the playtesters (uses all your processor cores; the window stays smooth)
+ if(_pool!==undefined)return _pool;_pool=null;
+ try{
+  const src=window.GAMEAI_ENGINE_SRC;if(!src||typeof Worker==='undefined')return null;
+  const pre="self.window=self;const document={getElementById:()=>({getContext:()=>({}),addEventListener(){},focus(){},classList:{add(){},remove(){},toggle(){}}})};"+
+   "const $=id=>document.getElementById(id),rnd=a=>a[Math.random()*a.length|0],ri=n=>Math.random()*n|0,shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=ri(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};"+
+   "let F={},FN=[],trained=true;self.requestAnimationFrame=()=>0;\n";
+  const url=URL.createObjectURL(new Blob([pre+src+"\nonmessage=m=>{let res;try{res={ok:1,j:judge(m.data.R)}}catch(err){res={ok:0,err:String(err)}}postMessage({id:m.data.id,...res})};"],{type:'text/javascript'}));
+  const n=Math.max(1,Math.min(6,(navigator.hardwareConcurrency||2)-1)),ws=[],wait=new Map();let id=0,rr=0;
+  for(let i=0;i<n;i++){const w=new Worker(url);w.onmessage=m=>{const f=wait.get(m.data.id);wait.delete(m.data.id);if(f)f(m.data)};ws.push(w)}
+  const call=R=>new Promise(res=>{const k=++id;wait.set(k,d=>res(d.ok?d.j:judge(R)));ws[rr++%n].postMessage({id:k,R})});
+  call.size=n;_pool=call;
+ }catch(err){_pool=null}
+ return _pool;
 }
 function playReport(res,r){
  const c=res.best,probs=[],e=c.runs.expert;
@@ -569,9 +599,9 @@ function playReport(res,r){
  else if(!c.proven)probs.push("no tester could win it, so it may be too hard or impossible");
  for(const [i,x] of (r.rules||[]).entries())if(c.proven&&x.trig==='score'&&!Object.values(c.runs).some(q=>q.win&&q.acts))probs.push(`rule ${i+1} never happened while playing`);
  const who=['beginner','average','expert'].filter(k=>c.runs[k].win);
- const level=c.hard<.3?'easy':c.hard<.6?'medium':'hard';
+ const level=c.hard<.3?'easy':c.hard<.6?'medium':'hard',qual=c.q>=.8?'great':c.q>=.6?'good':'okay';
  const tried=`Playtested ${res.tried} version${res.tried>1?'s':''}${c.last?' (first and last level)':''}`;
- const text=c.proven?`${tried} and kept the best.${c.balance?` Toned down a little (${Math.round((1-c.balance)*100)}% fewer enemies) so it can be beaten.`:''} Proven beatable${c.how==='search'?' (found by a search; the bots couldn\'t do it)':''}. Bots that won: ${who.join(', ')||'none'}. Feels ${level}${e.win?`; the expert finished ${c.last?'level 1 ':''}in ${Math.round(e.time)} s with ${Math.max(0,e.maxhp-e.hits)} of ${e.maxhp} hearts left`:''}.`:`${tried}, but couldn't prove any can be beaten.`;
+ const text=c.proven?`${tried} and kept the best.${c.balance?` Toned down a little (${Math.round((1-c.balance)*100)}% fewer enemies) so it can be beaten.`:''} Proven beatable${c.how==='search'?' (found by a search; the bots couldn\'t do it)':''}. Quality: ${qual} (${Math.round((c.q||0)*100)}%). Bots that won: ${who.join(', ')||'none'}. Feels ${level}${e.win?`; the expert finished ${c.last?'level 1 ':''}in ${Math.round(e.time)} s with ${Math.max(0,e.maxhp-e.hits)} of ${e.maxhp} hearts left`:''}.`:`${tried}, but couldn't prove any can be beaten.`;
  return {probs,text};
 }
 function txt(s,x,y,size,col,font){ctx.font=font||EF(size);ctx.fillStyle=col||'#fff';ctx.fillText(s,x,y)}
