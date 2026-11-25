@@ -16,31 +16,59 @@ def left_pad(seqs, pad):
     return torch.tensor([[pad] * (P - len(s)) + s for s in seqs]), P
 
 
+_MASKS = {}
+
+
+def _masks(tok, device):
+    """Grammar rules as small lookup tables, built once: for each slot, which values are allowed
+    given the value chosen for the field it depends on. Lets the whole batch be checked at once."""
+    key = (id(tok), str(device))
+    if key not in _MASKS:
+        from .recipe import CONSTRAINTS
+        vals = [[tok.decode_value(s, t) for t in tok.field_ids[s]] for s in range(len(OUT_FIELDS))]
+        tabs = []
+        for s, f in enumerate(OUT_FIELDS):
+            if f in CONSTRAINTS:
+                dep = CONSTRAINTS[f][0]; ds = OUT_FIELDS.index(dep)
+                t = torch.tensor([[v in allowed(f, {dep: pv}) for v in vals[s]] for pv in vals[ds]], device=device)
+                tabs.append((ds, t))
+            else:
+                tabs.append(None)
+        _MASKS[key] = (vals, tabs, [torch.tensor(ids, device=device) for ids in tok.field_ids])
+    return _MASKS[key]
+
+
 @torch.no_grad()
-def decode(model, tok, prompts, device, batch=256, gate=GATE):
+def decode(model, tok, prompts, device, batch=512, gate=GATE):
     """Constrained greedy decoding: at slot i only field i's values are allowed,
     so every output is a valid recipe. Returns [{field: (value, confidence)}]."""
     model.eval()
-    out = []
-    for i in range(0, len(prompts), batch):
-        x, _ = left_pad([tok.encode_prompt(p) for p in prompts[i:i + batch]], tok.pad)
+    vals, tabs, ids_t = _masks(tok, device)
+    enc = [tok.encode_prompt(p) for p in prompts]
+    order = sorted(range(len(enc)), key=lambda k: len(enc[k]))  # similar lengths together: far less padding
+    out = [None] * len(enc)
+    for i in range(0, len(enc), batch):
+        idx = order[i:i + batch]
+        x, _ = left_pad([enc[k] for k in idx], tok.pad)
         x = x.to(device)
-        res = [dict() for _ in range(x.size(0))]
-        chosen = [dict() for _ in range(x.size(0))]
-        for slot, f in enumerate(OUT_FIELDS):
-            ids = torch.tensor(tok.field_ids[slot], device=device)
-            vals = [tok.decode_value(slot, t) for t in tok.field_ids[slot]]
-            logits = model(x)[:, -1, :].float()[:, ids]
-            mask = torch.tensor([[v in allowed(f, ch) for v in vals] for ch in chosen], device=device)
-            probs = logits.masked_fill(~mask, float("-inf")).softmax(-1)  # grammar: forbidden values get zero probability
-            conf, j = probs.max(-1)
-            chosen_ids = ids[j]
-            for r, (c, t) in enumerate(zip(conf.tolist(), chosen_ids.tolist())):
-                v = tok.decode_value(slot, t)
-                chosen[r][f] = v
-                res[r][f] = (v if c >= gate or v == AUTO or f not in FIELD_NAMES else AUTO, c)
-            x = torch.cat([x, chosen_ids[:, None]], 1)
-        out += res
+        picks, confs = [], []
+        last, state = model.prefill(x, tok.pad)  # read the prompt once; each setting after that is one cheap step
+        for slot in range(len(OUT_FIELDS)):
+            logits = last.float()[:, ids_t[slot]]
+            if tabs[slot] is not None:
+                ds, t = tabs[slot]
+                logits = logits.masked_fill(~t[picks[ds]], float("-inf"))  # grammar: forbidden values get zero probability
+            conf, j = logits.softmax(-1).max(-1)
+            picks.append(j); confs.append(conf)
+            if slot + 1 < len(OUT_FIELDS):
+                last = model.extend(ids_t[slot][j], state)
+        P, C = torch.stack(picks, 1).tolist(), torch.stack(confs, 1).tolist()
+        for k, pr, cr in zip(idx, P, C):
+            res = {}
+            for slot, f in enumerate(OUT_FIELDS):
+                v, c = vals[slot][pr[slot]], cr[slot]
+                res[f] = (v if c >= gate or v == AUTO or f not in FIELD_NAMES else AUTO, c)
+            out[k] = res
     return out
 
 

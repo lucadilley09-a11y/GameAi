@@ -62,12 +62,15 @@ class Attention(nn.Module):
         self.o = nn.Linear(self.h * self.hd, c.d_model, bias=False)
         self.drop = c.dropout
 
-    def forward(self, x, cos, sin, mask):
+    def forward(self, x, cos, sin, mask, past=None):
         B, T, _ = x.shape
         q = self.q(x).view(B, T, self.h, self.hd).transpose(1, 2)
         k = self.k(x).view(B, T, self.kv, self.hd).transpose(1, 2)
         v = self.v(x).view(B, T, self.kv, self.hd).transpose(1, 2)
         q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
+        if past is not None:  # KV cache: reuse what was already worked out for earlier tokens
+            k, v = torch.cat([past[0], k], 2), torch.cat([past[1], v], 2)
+        self._kv = (k, v)
         rep = self.h // self.kv
         k, v = k.repeat_interleave(rep, dim=1), v.repeat_interleave(rep, dim=1)
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=self.drop if self.training else 0.0)
@@ -92,8 +95,8 @@ class Block(nn.Module):
         self.n1, self.attn, self.n2, self.mlp = RMSNorm(c.d_model), Attention(c), RMSNorm(c.d_model), SwiGLU(c)
         self.drop = nn.Dropout(c.dropout)
 
-    def forward(self, x, cos, sin, mask):
-        x = x + self.drop(self.attn(self.n1(x), cos, sin, mask))
+    def forward(self, x, cos, sin, mask, past=None):
+        x = x + self.drop(self.attn(self.n1(x), cos, sin, mask, past))
         return x + self.drop(self.mlp(self.n2(x)))
 
 
@@ -133,6 +136,28 @@ class GameAI(nn.Module):
         for b in self.blocks:
             x = b(x, cos, sin, mask)
         return self.head(self.norm(x))
+
+    @torch.no_grad()
+    def prefill(self, idx, pad_id=0):
+        """Read the prompt once and remember it (KV cache). Returns (last logits, state)."""
+        logits = self.forward(idx, pad_id)[:, -1]
+        real = idx != pad_id
+        state = {"kv": [b.attn._kv for b in self.blocks], "real": real, "pos": real.long().sum(1, keepdim=True)}
+        return logits, state
+
+    @torch.no_grad()
+    def extend(self, tok, state):
+        """Add one token per row using the cache: only the new token is computed."""
+        pos = state["pos"]
+        cos, sin = self.cos[pos][:, None], self.sin[pos][:, None]
+        state["real"] = torch.cat([state["real"], torch.ones_like(tok[:, None], dtype=torch.bool)], 1)
+        mask = state["real"][:, None, None, :]
+        x = self.emb(tok[:, None])
+        for i, b in enumerate(self.blocks):
+            x = b(x, cos, sin, mask, state["kv"][i])
+            state["kv"][i] = b.attn._kv
+        state["pos"] = pos + 1
+        return self.head(self.norm(x))[:, -1]
 
     def num_params(self):
         return sum(p.numel() for p in self.parameters())

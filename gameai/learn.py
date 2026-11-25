@@ -72,16 +72,23 @@ def loop(rnd, hist, teacher):
         print(f"=== Round {rnd}: new practice data ===", flush=True)
         if not run(["gameai.datagen", "--out", "data/round", "--train", str(PRACTICE), "--val", "1000", "--test", "10",
                     "--seed", str(1000 + rnd)]): break
+        print(f"=== Round {rnd}: practice test ===", flush=True)
+        practice = None
+        if run(["gameai.improve", "--seed", str(5000 + rnd), "--pool", os.environ.get("GAMEAI_LEARN_POOL", "20000")]) and os.path.exists("learn/practice.json"):
+            practice = json.load(open("learn/practice.json"))
         print(f"=== Round {rnd}: learning ===", flush=True)
         if not run(["gameai.train", "--init", "models/current.pt", "--data", "data/round", "--steps", str(STEPS),
                     "--lr", "1e-3", "--muon-lr", "0.006", "--eval-every", "400", "--name", f"round{rnd}"]): break
         print(f"=== Round {rnd}: testing ===", flush=True)
         if not run(["gameai.bench", "--fresh", "2000"]): break
         last = json.loads(open("bench/history.jsonl").readlines()[-1])
-        best = json.load(open("models/current.json"))  # the AI actually in use after this round
-        row = {"round": rnd, "time": time.time(), "exact": best["frozen"]["exact"], "typo": best["typo"]["exact"],
+        best = json.load(open("models/current.json")) if os.path.exists("models/current.json") else last  # the AI in use now
+        row = {"round": rnd, "time": time.time(), "exact": best.get("total", best["frozen"]["exact"]), "typo": best["typo"]["exact"],
+               "frozen": best["frozen"]["exact"], "gold": (best.get("gold") or {}).get("exact"), "version": best.get("version"),
+               "practice": practice and practice["practice_score"], "lessons": practice and practice["lessons"],
+               "weakest": practice and practice["weakest"], "why": last.get("why"),
                "natural": (best.get("natural") or {}).get("exact"),
-               "candidate": last["frozen"]["exact"], "promoted": last["promoted"], "teacher": n_teacher}
+               "candidate": last.get("total", last["frozen"]["exact"]), "promoted": last["promoted"], "teacher": n_teacher}
         with open(hist, "a") as f:
             f.write(json.dumps(row) + "\n")
         print(f"@@L{json.dumps(row)}", flush=True)

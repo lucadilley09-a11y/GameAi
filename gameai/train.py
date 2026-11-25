@@ -32,6 +32,40 @@ def make_batch(pairs, tok, device):
     return seq[:, :-1], seq[:, 1:], P  # predictions for the recipe live at positions P-1 .. P+len-2
 
 
+class GpuData:
+    """All examples packed into tensors on the GPU once, so a batch is just an index lookup
+    (no Python work per step). Same left-padding as left_pad(), so results are identical."""
+    def __init__(self, pairs, tok, device):
+        L = max(len(p) for p, _ in pairs)
+        self.lens = torch.tensor([len(p) for p, _ in pairs], device=device)
+        self.X = torch.tensor([[tok.pad] * (L - len(p)) + p for p, _ in pairs], device=device)
+        self.R = torch.tensor([r for _, r in pairs], device=device)
+        self.L, self.n = L, len(pairs)
+
+    def batch(self, idx):
+        P = int(self.lens[idx].max())
+        seq = torch.cat([self.X[idx, self.L - P:], self.R[idx]], 1)
+        return seq[:, :-1], seq[:, 1:], P
+
+
+@torch.no_grad()
+def quick_accuracy(model, data, tok, amp, n_out, limit=2000):
+    """Fast check during training: one pass, each setting must be the top allowed choice.
+    (The full slow decode runs once at the end.)"""
+    model.eval()
+    ids = [torch.tensor(f, device=data.X.device) for f in tok.field_ids]
+    fields = exact = 0
+    for i in range(0, min(limit, data.n), 1000):
+        idx = torch.arange(i, min(i + 1000, data.n, limit), device=data.X.device)
+        xb, yb, P = data.batch(idx)
+        with amp:
+            lg = model(xb)[:, P - 1:P - 1 + len(ids)].float()
+        ok = torch.stack([ids[s][lg[:, s, ids[s]].argmax(-1)] == yb[:, P - 1 + s] for s in range(len(ids))], 1)
+        fields += ok.sum().item(); exact += ok.all(1).sum().item()
+    n = min(limit, data.n)
+    return fields / (n * len(ids)), exact / n
+
+
 def recipe_loss(model, xb, yb, P, n_out):
     logits = model(xb)[:, P - 1:P - 1 + n_out]
     return F.cross_entropy(logits.reshape(-1, logits.size(-1)).float(), yb[:, P - 1:P - 1 + n_out].reshape(-1))
@@ -80,9 +114,13 @@ def main():
         t_rows = load_jsonl("data/teacher.jsonl")
         rows += t_rows * 2
         print(f"using {len(t_rows)} teacher examples", flush=True)
-    train = encode(rows, tok)
+    if os.path.exists("data/extra.jsonl"):  # the self-improving loop's lessons: its own mistakes and your corrections
+        e_rows = load_jsonl("data/extra.jsonl")
+        rows += e_rows
+        print(f"using {len(e_rows)} extra lessons (its mistakes and your corrections)", flush=True)
     val_rows = load_jsonl(f"{a.data}/val.jsonl")
     val = encode(val_rows, tok)
+    train_d, val_d = GpuData(encode(rows, tok), tok, device), GpuData(val, tok, device)
     n_out = len(OUT_FIELDS) + 1
 
     if a.init:
@@ -118,24 +156,27 @@ def main():
         for o in opts:
             for g in o.param_groups: g["lr"] = g["base_lr"] * wsd(step, a.steps)
         model.train()
-        xb, yb, P = make_batch(random.sample(train, a.batch), tok, device)
+        xb, yb, P = train_d.batch(torch.randint(train_d.n, (a.batch,), device=device))
         with amp:
             loss = recipe_loss(fwd, xb, yb, P, n_out)
         for o in opts: o.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         for o in opts: o.step()
-        ema = loss.item() if ema is None else 0.98 * ema + 0.02 * loss.item()
+        ema = loss.detach() if ema is None else 0.98 * ema + 0.02 * loss.detach()  # stays on the GPU: no waiting every step
+        if step % 10 == 0 or step + 1 == a.steps:
+            ema = float(ema)
         if os.environ.get("GAMEAI_PROGRESS") and (step % 10 == 0 or step + 1 == a.steps):  # read by the Game AI app
             print("@@P" + json.dumps({"step": step + 1, "total": a.steps, "loss": round(ema, 4), "sec": round(time.time() - t0, 1),
                                       "size": a.size, "params": n_params}), flush=True)
 
         if (step + 1) % a.eval_every == 0 or step + 1 == a.steps:
+            ema = float(ema)
             model.eval()
             with torch.no_grad(), amp:
-                vl = sum(recipe_loss(model, *make_batch(val[i:i + 500], tok, device), n_out).item()
-                         for i in range(0, min(len(val), 2000), 500)) / max(1, min(len(val), 2000) // 500)
-            fa, ex = accuracy(model, tok, val_rows[:1000], device)
+                vl = sum(recipe_loss(model, *val_d.batch(torch.arange(i, min(i + 500, val_d.n), device=device)), n_out).item()
+                         for i in range(0, min(val_d.n, 2000), 500)) / max(1, len(range(0, min(val_d.n, 2000), 500)))
+            fa, ex = quick_accuracy(model, val_d, tok, amp, n_out)
             run.log(step + 1, train_loss=round(ema, 4), val_loss=round(vl, 4), field_acc=round(fa, 4), exact=round(ex, 4),
                     lr_mult=round(wsd(step, a.steps), 3), sec=round(time.time() - t0, 1))
             print(f"step {step+1:5d}  train {ema:.4f}  val {vl:.4f}  fields {fa:.2%}  exact {ex:.2%}  {time.time()-t0:.0f}s", flush=True)

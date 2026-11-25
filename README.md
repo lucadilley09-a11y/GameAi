@@ -70,11 +70,25 @@ It tries several versions of the level and keeps one it can beat, with hardness 
 Results are saved in `memory/playtests.jsonl` for future training. The bot isn't a great player yet (it beats
 about half of random games on the first try, and about 4 in 5 when it gets 6 versions to choose from).
 
-## Always-on learning
+## Always-on learning and the self-improving loop
 
-`/learn on` keeps your AI getting smarter in rounds while you use it. Each round it practises on new
-made-up prompts, then takes the same fixed test. A new version replaces the old one only if it scores
-higher, so it never gets worse. `/graph` shows how smart it is over time. `/learn off` stops after the current round.
+`/learn on` keeps making your AI smarter in rounds, by itself, while you use it. Each round:
+
+1. **Practice test.** It answers about 25,000 requests it has never seen (new practice ones plus the teacher's
+   real-person ones). The right answers are known, so every mistake is found.
+2. **Drill.** Each mistake becomes a lesson, plus 3 new wordings of exactly the same game, so it practises
+   what it gets wrong instead of what it already knows. Your corrections count 5x, games you rated 4-5 count 2x.
+3. **Learn.** It trains on fresh practice data plus the teacher's examples plus those lessons.
+4. **Safety net.** The new version and the one in use take the same tests: frozen, typos, a hand-checked "gold"
+   set of tricky requests (`gameai/gold.jsonl`), the teacher's real-talk set, and requests you corrected
+   (every 5th correction is kept aside for testing only). The new version is used only if it scores better
+   overall **and** isn't clearly worse on any test. So it can't quietly get worse.
+5. **Versions.** Every version that was ever in use is kept (the last 20). `/versions` lists them, `/rollback`
+   goes back one, `/rollback 3` goes to version 3.
+
+The graph shows its test score (orange) and its practice-test score on new requests (dashed), and under it
+what it drilled last round. Teach it yourself: when it asks "I'm not sure about…", your answer is saved as a
+correction; `/fix enemy spiders` corrects the last game; `/rate 4` or `/rate 5` confirms it understood you.
 
 ## Terminal commands
 

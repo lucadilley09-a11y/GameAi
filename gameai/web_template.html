@@ -163,12 +163,13 @@ function drawGraph(pts,opt){
   `<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#d97757" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`;
 }
 async function showLearning(statusLine){
- const rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]);
+ let rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]);
+ if(rows.some(r=>'frozen' in r))rows=rows.filter(r=>'frozen' in r);  // the newer, fuller test: don't mix it with older scores
  if(!rows.length)return false;
  const t0=rows[0].time,hrs=(rows.at(-1).time-t0)/3600,gain=(rows.at(-1).exact-rows[0].exact)*100,ups=rows.filter((r,i)=>i&&r.promoted).length;
  $('graph').style.display=''; $('gtitle').innerHTML='How smart your AI is';
- drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.natural??r.typo,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
- $('ptext').innerHTML=`Orange line: how often it gets a game idea exactly right. Dashed: the same with natural, real-person wording (or typos, before the teacher has run). Each dot: it got smarter and switched to the new version.<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
+ drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.practice??r.natural??r.typo,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
+ const L=rows.at(-1);$('ptext').innerHTML=`Orange line: its test score, how often it gets a game idea exactly right (all tests together, including the hand-checked ones and your corrections). Dashed: its practice test on brand-new requests each round. Each dot: it got smarter and switched to the new version.${L.practice!=null?`<br>Last round: ${(L.practice*100).toFixed(1)}% right on its practice test; it drilled ${L.lessons} lessons${L.weakest&&L.weakest.length?`, mostly on ${esc(L.weakest.join(', '))}`:''}. ${L.promoted?'The new version was better, so it switched.':'The new version wasn\'t clearly better, so it kept the old one'+(L.why?` (${esc(L.why)})`:'')+'.'}`:''}<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
  const tn=rows.at(-1).teacher;if(tn)$('ptext').innerHTML+=`<br>The teacher has written ${tn} real-person examples so far, and each round learns from all of them.`;
  return true;
 }
@@ -222,13 +223,14 @@ function answer(t){
  menu=null;
  const q=pending.queue[pending.i],long=t.trim().split(/\s+/).length>3,v=long?null:parseAnswer(q.f,t);
  if(v===null){if(long){pending=null;say('&gt; '+esc(t),'u');say('Skipping the questions; making a new game from that.','d');make(t.trim(),false);return}say(`I didn't catch that. Try a number from the list.`,'w');return}
- say('&gt; '+esc(v==='auto'?'(you pick)':(LABEL[v]||v)),'u');pending.pred[q.f]={value:v,conf:1};pending.i++;
+ say('&gt; '+esc(v==='auto'?'(you pick)':(LABEL[v]||v)),'u');pending.pred[q.f]={value:v,conf:1};if(q.unsure&&v!=='auto'){if(!pending.pred.__corr)Object.defineProperty(pending.pred,'__corr',{value:{},writable:true});pending.pred.__corr[q.f]=v}pending.i++;
  if(pending.i<pending.queue.length)askNext();else{const p=pending;pending=null;finish(p.prompt,p.pred,false)}
 }
 async function make(prompt,edit){
  if(!AI){say('No AI loaded yet. Type /load.','w');return}
  if(edit&&!lastGame){say('No game to change yet. Describe one first.','w');return}
  spin(edit?'Changing your game':'Designing');const t0=performance.now(),pred=await decodeAny(prompt).finally(unspin),ms=performance.now()-t0;
+ Object.defineProperty(pred,'__raw',{value:Object.fromEntries(Object.keys(pred).map(k=>[k,pred[k].value])),writable:true});  // the AI's own answer, for corrections
  for(const f of FN){const p=pred[f];if(p.value!=='auto'&&p.conf<GATE){p.unsure=true;p.guess=p.value;p.value='auto'}}
  if(askOn&&!edit){
   const queue=[...FN.filter(f=>pred[f].unsure&&QTEXT[f]).map(f=>({f,unsure:true,guess:pred[f].guess})),...IMPORTANT.filter(f=>pred[f].value==='auto'&&!pred[f].unsure).map(f=>({f}))].slice(0,2);
@@ -263,7 +265,8 @@ async function finish(prompt,pred,edit,ms){
  const P={};for(const f of FN)P[f]={use:pred[f].value};
  const {r,src}=resolve(P,edit?lastGame.r:null),nr=rulesFrom(pred);r.rules=nr.length||!edit?nr:(lastGame.r.rules||[]);src.rules=nr.length?'ai':'kept';
  spin('Playtesting');let res;try{res=await bestLevel(r,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
- r.seed=res.best.seed;build(r);const play=playReport(res,r);lastGame={prompt,r,time:new Date().toISOString(),play:{tried:res.tried,wins:res.best.wins,hard:res.best.hard,runs:res.best.runs}};
+ r.seed=res.best.seed;build(r);const play=playReport(res,r);lastGame={prompt,r,edit,raw:pred.__raw,corr:pred.__corr||null,time:new Date().toISOString(),play:{tried:res.tried,wins:res.best.wins,hard:res.best.hard,runs:res.best.runs}};
+ if(!edit&&pred.__corr&&pred.__raw)teach(prompt,{...pred.__raw,...pred.__corr},true);
  if(API&&API.app)post('api/playlog',{prompt,recipe:r,edit,tried:res.tried,runs:res.best.runs,problems:play.probs}).catch(()=>{});
  const rows=FN.map(f=>{const c=pred[f].conf,ai=src[f]==='ai';const cls=!ai?'d':c>=.9?'a':c>=.6?'w':'e';
   return `<tr><td class="d">${f}</td><td class="${ai?'u':'d'}">${ai?esc(r[f]):`${src[f]==='kept'?'kept':'auto'} → ${esc(r[f])}`}</td><td class="${cls}">${ai?Math.round(c*100)+'%':''}</td></tr>`}).join('');
@@ -273,9 +276,14 @@ async function finish(prompt,pred,edit,ms){
  const ep=store.get('gameai.episodes',[]);ep.push({...lastGame,edit});store.set('gameai.episodes',ep.slice(-500));
  setTimeout(()=>cv.focus(),0);
 }
-const HELP=[['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
+const HELP=[['/fix <part> <value>','tell it what it got wrong in the last game, e.g. /fix enemy spiders; it learns from it'],['/versions','PC: every version of your AI and its score'],['/rollback [n]','PC: go back to an older version'],['/stop','PC: cancel whatever is running (training, learning or the teacher)'],['/autostart on|off','PC: start Game AI (hidden) when the PC turns on, so the Chromebook can always use it'],['/pc <address> <code>','Chromebook: tell this file where your PC is (only if it can\'t find it)'],['/quality fast|normal|best','how many versions the playtest bot tries per game (1, 6 or 16)'],['/game [pop|hide]','show or hide the game screen, or give it its own window'],['/quit','PC app: close Game AI completely (also stops training)'],['your idea','make a game, e.g. a fast ninja in a spooky dungeon'],['/edit <change>','change the last game, e.g. /edit make it harder'],['/rate <1-5> [note]','rate the last game'],['/details','see each part of the last game and how sure the AI was'],['/questions on|off','turn the AI\'s questions on or off'],
  ['/train [size]','PC app: train a new AI (tiny, small, base, large) with a live progress bar'],['/learn on|off','PC app: always-on learning; it keeps getting smarter while you use it'],['/graph','PC app: show the how-smart graph'],['/teacher [n]','PC app: a free open AI writes natural practice examples (default 2000)'],['/update','PC app: check for a new version now (it also checks every 15 seconds)'],['/test','PC app: run the benchmark'],['/runs','PC app: past training runs'],['/save [name]','PC app: save the game as one HTML file'],['/open','open the game in its own window (same as /game pop)'],
  ['/share on|off','PC app: let your Chromebook use this PC over Wi-Fi (always up to date)'],['/chromebook','PC app: make an offline copy for your Chromebook'],['/load','Chromebook: load gameai-model.json (or drag it onto the page)'],['/ratings','copy your ratings'],['/status','show the loaded AI'],['/clear','clear the terminal']];
+function teach(prompt,rec,quiet){
+ // send a corrected answer to the PC: the next learning round learns from it (counts 5x)
+ if(!(API&&API.app))return;
+ post('api/correct',{prompt,recipe:rec}).then(r=>{if(!quiet)say(r.ok?`Thanks, saved. Your AI learns from it in the next learning round${r.test?' (this one is kept aside to test it on)':''}.`:esc(r.error||'Could not save that.'),r.ok?'a':'w')});
+}
 function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
 async function popOut(){
  if(!lastGame){say('Make a game first.','w');return}
@@ -301,7 +309,8 @@ function command(line){
   case '/help':say('<table>'+HELP.map(([a,b])=>`<tr><td class="a">${esc(a)}</td><td class="d">${esc(b)}</td></tr>`).join('')+'</table>');break;
   case '/edit':arg?make(arg,true):say('Use: /edit make it harder','w');break;
   case '/rate':{const m=arg.match(/^([1-5])\s*(.*)$/);if(!lastGame){say('Make a game first.','w');break}if(!m){say('Use: /rate 4 fun but short','w');break}
-   const rs=store.get('gameai.ratings',[]);rs.push({...lastGame,rating:+m[1],note:m[2]});store.set('gameai.ratings',rs);say(`Saved. ${rs.length} rating${rs.length>1?'s':''} so far.`);break}
+   const rs=store.get('gameai.ratings',[]);rs.push({...lastGame,rating:+m[1],note:m[2]});store.set('gameai.ratings',rs);say(`Saved. ${rs.length} rating${rs.length>1?'s':''} so far.`);
+   if(API&&API.app&&+m[1]>=4&&!lastGame.edit&&!lastGame.corr&&lastGame.raw)post('api/rate',{prompt:lastGame.prompt,recipe:lastGame.raw,rating:+m[1]}).then(r=>{if(r.kept)say('It will also learn that it understood this request right.','d')});break}
   case '/train':if(needApp())break;post('api/train',{size:arg||'small'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(`Training a ${esc(arg||'small')} AI from scratch. You can keep making games meanwhile.`);watch()}});break;
   case '/learn':if(needApp())break;post('api/learn',{on:arg!=='off'}).then(r=>{if(!r.ok)say(esc(r.error),'w');else if(r.stopping)say('Stopping after the current round finishes.','d');else{say('Always-on learning started. A teacher AI writes new real-person examples at the same time, and each round learns from all of them. Keep making games; it switches to each better version by itself.');watch()}});break;
   case '/graph':if(needApp())break;$('prog').classList.add('on');$('graph').style.display='';showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
@@ -327,6 +336,15 @@ function command(line){
   case '/autostart':if(needApp())break;post('api/autostart',{on:arg!=='off'}).then(r=>say(r.ok?(r.on?'Game AI will start by itself (no window) when your PC turns on, so your Chromebook can always use it. Turn off with /autostart off.':'Game AI will no longer start with your PC.'):esc(r.error||'Could not change that.'),r.ok?'a':'w'));break;
   case '/pc':{const m=arg.match(/^(\S+)\s+(\d{4})$/);if(!m){say('Use: /pc 192.168.1.20 1234 (the address and code that /share shows on your PC). /pc off forgets it.','d');if(arg==='off'){store.set('gameai.pc',null);say('Forgot the PC.','d')}break}
    const u=/^https?:/.test(m[1])?m[1].replace(/\/?$/,'/'):`http://${m[1].replace(/:\d+$/,'')}:8766/`;store.set('gameai.pc',{urls:[u],pin:m[2]});say('Saved. Reloading to connect…','d');setTimeout(()=>location.reload(),600);break}
+  case '/fix':{if(!lastGame||lastGame.edit||!lastGame.raw){say('Make a new game first (not an /edit), then /fix what it got wrong.','w');break}
+   const t=arg.toLowerCase().split(/\s+/).filter(Boolean),fix={};let bad='';
+   for(let i=0;i<t.length;i+=2){const f=t[i],v=t[i+1];if(!FN.includes(f)||v==null){bad=f||'';break}const ok=v==='auto'||options(f).includes(v)||(f==='enemy'&&v==='none')||(f==='powerup'&&v==='none');if(!ok){bad=f+' '+v;break}fix[f]=v}
+   if(!Object.keys(fix).length||bad){say(`Use: /fix enemy spiders (or several: /fix theme snow goal gems). Parts: ${FN.join(', ')}. Use "auto" if you didn't ask for it.${bad?` I couldn't use "${esc(bad)}".`:''}`,'w');break}
+   if(needApp())break;
+   const rec={...lastGame.raw,...(lastGame.corr||{}),...fix};lastGame.corr={...(lastGame.corr||{}),...fix};
+   for(const [f,v] of Object.entries(fix))if(v!=='auto')lastGame.r[f]=v;build(lastGame.r);teach(lastGame.prompt,rec,false);break}
+  case '/versions':if(needApp())break;fetch('api/versions').then(r=>r.json()).then(vs=>say(vs.length?'<table>'+vs.map(v=>`<tr><td class="${v.in_use?'k':'d'}">v${String(v.version).padStart(3,'0')}${v.in_use?' (in use)':''}</td><td>${v.total!=null?(v.total*100).toFixed(2)+'%':''}</td><td class="d">${v.time?new Date(v.time*1000).toLocaleString():''}</td></tr>`).join('')+'</table><span class="d">/rollback goes back one version; /rollback 3 goes to v003.</span>':'No saved versions yet. They are kept from the next time your AI improves.','d'));break;
+  case '/rollback':if(needApp())break;post('api/rollback',{n:+arg||null}).then(r=>say(r.ok?`Now using version ${r.version}. Learning continues from this one.`:esc(r.error),r.ok?'a':'w'));break;
   case '/questions':askOn=arg!=='off';store.set('gameai.ask',askOn);say(`Questions ${askOn?'on':'off'}.`);break;
   case '/load':$('files').click();say('Pick gameai-model.json (from the for-chromebook folder on your PC).','d');break;
   case '/ratings':{const t=JSON.stringify(store.get('gameai.ratings',[]));navigator.clipboard?.writeText(t).then(()=>say('Ratings copied. Paste them into a file on your PC.'),()=>say('Copy was blocked by the browser.','w'));break}

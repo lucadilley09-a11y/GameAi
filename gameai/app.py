@@ -120,6 +120,9 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/learnhist":
             rows = [json.loads(l) for l in open("learn/history.jsonl")] if os.path.exists("learn/history.jsonl") else []
             return self.send(200, rows[-300:])
+        if path == "/api/versions":
+            from .versions import list_versions
+            return self.send(200, list_versions())
         if path == "/api/progress": return self.send(200, {k: v for k, v in STATE["job"].items()})
         if path == "/api/runs":
             rows = [json.loads(l) for l in open("runs/index.jsonl")] if os.path.exists("runs/index.jsonl") else []
@@ -163,6 +166,30 @@ class H(BaseHTTPRequestHandler):
             os.makedirs("memory", exist_ok=True)
             with open("memory/playtests.jsonl", "a", encoding="utf-8") as f: f.write(json.dumps(dict(b, time=time.time())) + "\n")
             return self.send(200, {"ok": True})
+        if path in ("/api/correct", "/api/rate"):
+            from .recipe import OUT_FIELDS, is_valid_out
+            prompt, rec = str(b.get("prompt", "")).strip()[:240], b.get("recipe") or {}
+            rec = {f: str(rec.get(f, "")) for f in OUT_FIELDS}
+            if not prompt or not is_valid_out(rec): return self.send(400, {"error": "that answer doesn't fit the game language"})
+            os.makedirs("memory", exist_ok=True)
+            row = json.dumps({"prompt": prompt, "recipe": rec, "time": time.time()}) + "\n"
+            if path == "/api/rate":
+                if int(b.get("rating") or 0) < 4: return self.send(200, {"ok": True, "kept": False})
+                open("memory/confirmed.jsonl", "a", encoding="utf-8").write(row)
+                return self.send(200, {"ok": True, "kept": True})
+            n = sum(1 for _ in open("memory/corrections.jsonl", encoding="utf-8")) if os.path.exists("memory/corrections.jsonl") else 0
+            n += sum(1 for _ in open("memory/corrections_test.jsonl", encoding="utf-8")) if os.path.exists("memory/corrections_test.jsonl") else 0
+            test = n % 5 == 4  # every 5th one is kept aside to test the AI on, never trained on
+            open("memory/corrections_test.jsonl" if test else "memory/corrections.jsonl", "a", encoding="utf-8").write(row)
+            return self.send(200, {"ok": True, "test": test, "count": n + 1})
+        if path == "/api/rollback":
+            from .versions import rollback
+            try:
+                n = rollback(int(b["n"]) if b.get("n") else None)
+            except (ValueError, KeyError) as e:
+                return self.send(400, {"error": str(e)})
+            with STATE["lock"]: load_model()
+            return self.send(200, {"ok": True, "version": n})
         if path == "/api/stop":
             return self.send(200, {"ok": True, "stopped": kill_job()})
         if path == "/api/autostart":

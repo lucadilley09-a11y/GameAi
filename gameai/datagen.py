@@ -82,13 +82,17 @@ RACT = {
 }
 
 
-def make_rule(rng, goal, enemy="auto", powerup="auto"):
-    """A random rule that cannot contradict the rest of the prompt (e.g. no 'when you get hit' in a peaceful game)."""
+def make_rule(rng, goal, enemy="auto", powerup="auto", want=None):
+    """A random rule that cannot contradict the rest of the prompt (e.g. no 'when you get hit' in a peaceful game).
+    With want={trig, tn, act, an}: new words for exactly that rule."""
     trigs = [t for t in RTRIG if not (t == "hit" and enemy == "none") and not (t == "powerup" and powerup == "none")]
     acts = [k for k in RACT if not (enemy == "none" and k[0] in ("spawn", "faster", "slower", "freeze"))]
-    trig = rng.choice(trigs)
-    tn = rng.choice(TN_BY_TRIG[trig])
-    act, an = rng.choice(acts)
+    if want:
+        trig, tn, act, an = want["trig"], want["tn"], want["act"], want["an"]
+    else:
+        trig = rng.choice(trigs)
+        tn = rng.choice(TN_BY_TRIG[trig])
+        act, an = rng.choice(acts)
     item = {"coins": ("coin", "coins"), "gems": ("gem", "gems")}.get(goal) or rng.choice([("key", "keys"), ("item", "items")])
     t = rng.choice(RTRIG[trig]).format(i1=item[0], items=item[1], n=tn)
     a = rng.choice(RACT[(act, an)])
@@ -110,9 +114,14 @@ def typo(s, rng):
     return " ".join(w)
 
 
-def make_example(rng, n_typos=0):
+def make_example(rng, n_typos=0, want=None):
+    """A random practice request and its answer. With want=<answer>: a new way of asking for exactly that game
+    (the self-improving loop uses this to drill the AI on the kinds of requests it got wrong)."""
     L, parts = {}, []
     def pick(f):
+        if want is not None:
+            c = want[f]; L[f] = c
+            return None if c == AUTO else rng.choice(SYN[f][c])
         if rng.random() < PROB[f]:
             c = rng.choice(FIELDS[f]); L[f] = c
             return rng.choice(SYN[f][c])
@@ -129,8 +138,8 @@ def make_example(rng, n_typos=0):
         put("enemy", f"{ct} {en}" if ct else en)
     elif en:
         L["count"] = AUTO; parts.append(en)
-    elif rng.random() < .25:
-        c = rng.choice(FIELDS["count"]); L["count"] = c
+    elif (want is not None and want["count"] != AUTO) or (want is None and rng.random() < .25):
+        c = want["count"] if want is not None else rng.choice(FIELDS["count"]); L["count"] = c
         parts.append(rng.choice(["W", "with W", "add W"]).replace("W", f"{rng.choice(SYN['count'][c])} {rng.choice(GENERIC)}"))
     else:
         L["count"] = AUTO
@@ -143,8 +152,12 @@ def make_example(rng, n_typos=0):
     s = rng.choice(["", "make a ", "i want a ", "create a ", "give me a ", "top down game ", "a game ", "build me a game ", "can you make "])
     for i, p in enumerate(parts):
         s += (rng.choice([" ", " and ", ", ", " with "]) if i else "") + p
-    k = 0 if rng.random() < .55 else 1 if rng.random() < .73 else 2
-    rules = [make_rule(rng, L["goal"], L["enemy"], L["powerup"]) for _ in range(k)]
+    if want is not None:
+        from .recipe import rules_of
+        rules = [make_rule(rng, L["goal"], L["enemy"], L["powerup"], want=r) for r in rules_of(want)]
+    else:
+        k = 0 if rng.random() < .55 else 1 if rng.random() < .73 else 2
+        rules = [make_rule(rng, L["goal"], L["enemy"], L["powerup"]) for _ in range(k)]
     for i in range(1, 3):
         r = rules[i - 1][0] if i <= len(rules) else {"trig": "none", "tn": "none", "act": "none", "an": "none"}
         for key, v in r.items():
