@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Game AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: playful workshop, a toy lab you can actually use
+   IDEA: a handheld console: the AI "cartridge" on the left, the screen on the right
+   PICTURE: the live game canvas itself, framed in a console housing
+   COLOUR and TYPE: deep indigo housing, lime accent; Pixelify Sans titles, Inter body
+   LAYOUT: modest title, then controls column + big screen; stacks on phones */
+:root{color-scheme:light dark;--bg:light-dark(#eef0f8,#0d0f1c);--ink:light-dark(#151830,#e9ebf7);--dim:light-dark(#5a5f7d,#9aa0c0);--card:light-dark(#ffffff,#161a2e);--line:light-dark(#d6d9ea,#272c48);--acc:#b6f24a;--acc-ink:#162004;--shell:#1d2142;--tr:light-dark(#5a8a00,#b6f24a);--va:light-dark(#3b5bdb,#8fa8ff)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif;overflow-x:clip}
+header{padding:22px max(4vw,16px) 6px;max-width:1340px;margin:auto}
+h1{font:700 clamp(28px,4vw,40px)/1.05 "Pixelify Sans",system-ui,sans-serif;margin:0;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--dim);max-width:72ch}
+main{display:grid;grid-template-columns:minmax(0,370px) minmax(0,1fr);gap:20px;padding:16px max(4vw,16px) 40px;max-width:1340px;margin:auto;align-items:start}
+@media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}.screen{order:-1}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+.card h2{font:700 18px/1.2 "Pixelify Sans",system-ui,sans-serif;margin:0 0 10px}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0}
+.bar>div{height:100%;width:0;background:var(--acc)}
+.stats{display:grid;grid-template-columns:1fr auto;gap:2px 12px;font-size:14px;font-variant-numeric:tabular-nums}
+.stats span{color:var(--dim)}.stats b{text-align:right;font-weight:600}
+#chart{display:block;width:100%;height:80px;margin-top:10px}
+.key{display:flex;gap:14px;font-size:13px;color:var(--dim)}.key i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
+textarea{width:100%;min-height:76px;resize:vertical;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;font:16px/1.4 Inter,system-ui,sans-serif}
+textarea:focus,button:focus-visible,canvas:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button{min-height:44px;background:var(--acc);color:var(--acc-ink);border:0;border-radius:10px;padding:0 16px;font:600 15px Inter,system-ui,sans-serif;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.lbl{font-size:13px;color:var(--dim);margin:12px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{min-height:34px;background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:400;font-size:13px;padding:0 10px;text-align:left}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}td:first-child{color:var(--dim);padding-right:8px}td:last-child{text-align:right;color:var(--dim);white-space:nowrap;padding-left:8px}
+.auto,.kept{color:var(--dim);font-style:italic}.why{display:block;font-size:12px;color:var(--dim)}
+.note{color:var(--dim);font-size:13px;margin:8px 0 0}
+.screen{background:var(--shell);border-radius:22px;padding:clamp(10px,2vw,22px);box-shadow:0 18px 40px -18px #0008,inset 0 2px 0 #ffffff1a}
+canvas#game{display:block;width:100%;aspect-ratio:4/3;border-radius:10px;background:#000}
+.legend{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;color:#aeb4dc;font-size:13px;margin-top:10px}
+.baked header,.baked main>div:first-child{display:none}.baked main{grid-template-columns:minmax(0,1fr);max-width:960px}
+</style></head><body>
+<header>
+<h1>Tiny Game AI v2</h1>
+<p>A neural network written from scratch and trained in your browser on game descriptions that a script makes up, including typos and slang. Describe a top-down game, or tell it what to change.</p>
+</header>
+<main>
+<div>
+ <section class="card">
+  <h2>1 · Train the AI</h2>
+  <div class="stats">
+   <span>Parameters</span><b id="sParams">–</b>
+   <span>Training examples</span><b id="sEx">–</b>
+   <span>Fields right (unseen test)</span><b id="sField">–</b>
+   <span>Whole recipe right</span><b id="sExact">–</b>
+   <span>Whole recipe right, with typos</span><b id="sTypo">–</b>
+   <span>Best round</span><b id="sBest">–</b>
+   <span>Time</span><b id="sTime">–</b>
+  </div>
+  <canvas id="chart" width="600" height="160" aria-label="Loss chart"></canvas>
+  <div class="key"><span><i style="background:var(--tr)"></i>training loss</span><span><i style="background:var(--va)"></i>test loss</span></div>
+  <div class="bar"><div id="prog"></div></div>
+  <div class="row"><button id="trainBtn">Train from scratch</button></div>
+  <p class="note" id="trainNote">Training takes about 10 seconds.</p>
+ </section>
+ <section class="card">
+  <h2>2 · Describe or change a game</h2>
+  <textarea id="prompt" placeholder="e.g. a fast ninja escaping a spooky dungeon full of spiders">a fast ninja escaping a spooky dungeon full of spiders</textarea>
+  <div class="row"><button id="genBtn" disabled>New game</button><button class="ghost" id="editBtn" disabled>Change this game</button><button class="ghost" id="restartBtn" disabled>Restart</button></div>
+  <p class="note">Enter makes a new game; Ctrl+Enter changes the current one.</p>
+  <p class="lbl">Game ideas</p><div class="chips" id="ideas"></div>
+  <p class="lbl">Changes to try</p><div class="chips" id="changes"></div>
+ </section>
+ <section class="card">
+  <h2>3 · Recipe the AI wrote</h2>
+  <table><tbody id="recipe"><tr><td>Waiting for a prompt</td><td></td><td></td></tr></tbody></table>
+  <p class="note" id="genNote">The gray text under a value is the word that made the AI choose it.</p>
+ </section>
+</div>
+<div class="screen">
+ <canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas>
+ <div class="legend"><span>Move: arrow keys or WASD</span><span>R or Enter: play again</span></div>
+</div>
+</main>
+<script>/*GAMEAI_RECIPE*/</script>
+<script>
+{
+// ---------- vocabulary for the made-up training data ----------
+const F={
+ theme:{forest:['forest','woods','jungle','grassland','nature','meadow','woodland','enchanted forest','garden'],dungeon:['dungeon','castle','cave','crypt','spooky dungeon','haunted castle','creepy cave','dark dungeon','tomb','haunted house','spooky','creepy'],space:['space','alien planet','galaxy','spaceship','space station','moon base','outer space','sci-fi','mars','asteroid field'],desert:['desert','sandy desert','pyramid','egypt','dunes','canyon','wasteland','sahara','wild west','oasis'],snow:['snow','ice cave','winter','frozen land','arctic','snowy mountain','tundra','icy','north pole','glacier','christmas'],ocean:['ocean','underwater','sea','beach','coral reef','island','deep sea','pirate island','lagoon','tropical'],volcano:['volcano','lava','lava world','fire land','magma cave','molten','inferno']},
+ player:{knight:['knight','warrior','hero','soldier','paladin','swordsman'],cat:['cat','kitty','kitten'],robot:['robot','bot','android','mech','cyborg'],wizard:['wizard','mage','witch','sorcerer','magician'],dog:['dog','puppy','doggo','pup'],ninja:['ninja','assassin','samurai'],frog:['frog','toad','froggy']},
+ enemy:{bats:['bats','vampire bats','flying bats'],slimes:['slimes','blobs','goo monsters','jellies'],skeletons:['skeletons','zombies','undead','mummies'],aliens:['aliens','martians','ufos','space invaders'],ghosts:['ghosts','spirits','phantoms','spooky ghosts'],spiders:['spiders','giant spiders','creepy crawlies','bugs'],dragons:['dragons','fire dragons','drakes','wyverns'],none:['no enemies','peaceful','no monsters','cozy','nothing to fight','without enemies']},
+ count:{few:['a few','a couple of','two or three','not many','fewer','less','only a few'],some:['some','several','a handful of'],many:['lots of','tons of','hordes of','a swarm of','hundreds of','loads of','full of','more','way more','a lot of','an army of']},
+ speed:{slow:['slow','sluggish','chill','relaxed','calm','slower','slow down','slow motion'],fast:['fast','speedy','quick','zippy','rapid','super fast','faster','speed it up','lightning fast','hyper']},
+ goal:{coins:['collect coins','grab coins','get the coins','gather gold','collect gold','coins','treasure','money','loot'],gems:['collect gems','find gems','grab diamonds','collect crystals','jewels','gems','rubies'],exit:['find the exit','escape','escaping','reach the door','find the way out','get out of the maze','exit','maze','labyrinth','find the stairs','reach the portal'],survive:['survive','stay alive','last as long as you can','survive the waves','survival','endless waves','hold out']},
+ difficulty:{easy:['easy','simple','beginner','casual','for kids','easier','not too hard','relaxing','baby mode'],hard:['hard','difficult','challenging','brutal','insane','tough','very hard','harder','more difficult','not too easy','nightmare','extreme']},
+ size:{small:['small map','tiny map','small level','compact','short level','smaller map','smaller'],big:['big map','huge map','large world','giant level','open world','big level','huge world','bigger map','bigger','larger map']},
+ powerup:{hearts:['health pickups','hearts','healing hearts','extra lives','health potions'],boots:['speed boots','speed boosts','speed powerups','boots'],shield:['shields','shield powerups','invincibility','bubble shields'],none:['no powerups','no power ups','no items']}
+};
+const GENERIC=['enemies','monsters','bad guys','baddies','foes','creatures'];
+const FILLER=['please','pls','awesome','cool','epic','like zelda','pixel art','retro style','fun','really','super','kind of','i think','with nice graphics','for my friend','top down','2d','n stuff','lol'];
+const FN=Object.keys(F),CL=FN.map(f=>[...Object.keys(F[f]),'auto']),OFF=[];let C=0;CL.forEach((c,i)=>{OFF[i]=C;C+=c.length});
+const rnd=a=>a[Math.random()*a.length|0],ri=n=>Math.random()*n|0;
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=ri(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};
+const tpl=(list,w)=>rnd(list).replace('W',w);
+
+function typo(s){
+ const w=s.split(' '),c=w.map((_,i)=>i).filter(i=>w[i].length>3);if(!c.length)return s;
+ const i=rnd(c),a=w[i].split(''),j=1+ri(a.length-2),op=ri(4);
+ if(op===0)[a[j],a[j+1]]=[a[j+1],a[j]];else if(op===1)a.splice(j,1);else if(op===2)a.splice(j,0,a[j]);else a[j]='abcdefghijklmnopqrstuvwxyz'[ri(26)];
+ w[i]=a.join('');return w.join(' ');
+}
+function makeExample(nTypos){
+ const L={},parts=[];
+ const pick=(f,p)=>{if(Math.random()<p){const c=rnd(Object.keys(F[f]));L[f]=c;return rnd(F[f][c])}L[f]='auto';return null};
+ const th=pick('theme',.7);if(th)parts.push(tpl(['in a W','W themed','set in a W','W level','W world','in the W','set it in W','W'],th));
+ const pl=pick('player',.65);if(pl)parts.push(tpl(['play as a W','you are a W','a W hero','W player','starring a W','a W','switch to a W','make me a W'],pl));
+ const en=pick('enemy',.65);
+ if(en&&L.enemy!=='none'){const ct=pick('count',.45);parts.push(tpl(['fighting W','with W','dodge the W','W chase you','avoid W','W everywhere','watch out for W','add W'],ct?ct+' '+en:en))}
+ else if(en){L.count='auto';parts.push(en)}
+ else if(Math.random()<.25){const c=rnd(['few','some','many']);L.count=c;parts.push(tpl(['W','with W','add W'],rnd(F.count[c])+' '+rnd(GENERIC)))}
+ else L.count='auto';
+ const sp=pick('speed',.4);if(sp)parts.push(tpl(['W paced','W player','make it W','W movement','W'],sp));
+ const gl=pick('goal',.6);if(gl)parts.push(tpl(['W','goal is to W','you have to W','W to win'],gl));
+ const df=pick('difficulty',.4);if(df)parts.push(tpl(['W mode','make it W','W difficulty','W','W please'],df));
+ const sz=pick('size',.3);if(sz)parts.push(tpl(['W','on a W','W please','with a W'],sz));
+ const pu=pick('powerup',.3);if(pu)parts.push(tpl(['with W','W to pick up','W','add W'],pu));
+ shuffle(parts);if(Math.random()<.4)parts.splice(ri(parts.length+1),0,rnd(FILLER));
+ let s=rnd(['','make a ','i want a ','create a ','give me a ','top down game ','a game ','build me a game ','can you make ']);
+ parts.forEach((p,i)=>{s+=(i?rnd([' ',' and ',', ',' with ']):'')+p});
+ for(let k=0;k<nTypos;k++)s=typo(s);
+ return {text:s,x:feats(s),y:FN.map((f,i)=>CL[i].indexOf(L[f]))};
+}
+
+// ---------- features: hashed words, word pairs, letter triples ----------
+const D=4096,H=80;
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)%D}
+function feats(t){
+ const w=t.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(Boolean),set=new Set();
+ w.forEach((tk,i)=>{set.add(hash('w:'+tk));if(i)set.add(hash('b:'+w[i-1]+'_'+tk));const p='<'+tk+'>';for(let j=0;j+3<=p.length;j++)set.add(hash('c:'+p.slice(j,j+3)))});
+ const idx=[...set];return {idx,val:1/Math.sqrt(Math.max(1,idx.length))};
+}
+
+// ---------- neural network, written from scratch ----------
+function randn(n,s){const a=new Float32Array(n);for(let i=0;i<n;i++)a[i]=s*Math.sqrt(-2*Math.log(Math.random()+1e-9))*Math.cos(6.2832*Math.random());return a}
+let P,G,M,V,t;
+function init(){
+ P={W1:randn(D*H,.4),b1:new Float32Array(H),W2:randn(H*C,.12),b2:new Float32Array(C)};
+ G={},M={},V={};for(const k in P){G[k]=new Float32Array(P[k].length);M[k]=new Float32Array(P[k].length);V[k]=new Float32Array(P[k].length)}t=0;
+}
+function forward(x){
+ const h=new Float32Array(H);h.set(P.b1);
+ for(const i of x.idx){const o=i*H;for(let j=0;j<H;j++)h[j]+=x.val*P.W1[o+j]}
+ for(let j=0;j<H;j++)if(h[j]<0)h[j]=0;
+ const p=new Float32Array(C);p.set(P.b2);
+ for(let j=0;j<H;j++)if(h[j]){const o=j*C;for(let c=0;c<C;c++)p[c]+=h[j]*P.W2[o+c]}
+ CL.forEach((cl,f)=>{const o=OFF[f],n=cl.length;let m=-1e9,s=0;for(let k=0;k<n;k++)m=Math.max(m,p[o+k]);for(let k=0;k<n;k++){p[o+k]=Math.exp(p[o+k]-m);s+=p[o+k]}for(let k=0;k<n;k++)p[o+k]/=s});
+ return {h,p};
+}
+const SMOOTH=.05,DROP=.1,WD=1e-4;
+function step(batch,lr){
+ G.b1.fill(0);G.W2.fill(0);G.b2.fill(0);const rows=new Set();let loss=0;
+ for(const ex of batch){
+  let idx=ex.x.idx.filter(()=>Math.random()>DROP);if(!idx.length)idx=ex.x.idx;            // feature dropout
+  const x={idx,val:1/Math.sqrt(idx.length)},{h,p}=forward(x),dz=new Float32Array(C),dh=new Float32Array(H);
+  FN.forEach((f,i)=>{const o=OFF[i],y=ex.y[i],n=CL[i].length;for(let k=0;k<n;k++){const q=(k===y?1-SMOOTH:0)+SMOOTH/n;loss-=q*Math.log(p[o+k]+1e-9);dz[o+k]=p[o+k]-q}}); // label smoothing
+  for(let c=0;c<C;c++)G.b2[c]+=dz[c];
+  for(let j=0;j<H;j++)if(h[j]>0){const o=j*C;for(let c=0;c<C;c++){G.W2[o+c]+=h[j]*dz[c];dh[j]+=P.W2[o+c]*dz[c]}}
+  for(let j=0;j<H;j++)G.b1[j]+=dh[j];
+  for(const i of idx){const o=i*H;if(!rows.has(i)){rows.add(i);G.W1.fill(0,o,o+H)}for(let j=0;j<H;j++)G.W1[o+j]+=x.val*dh[j]}
+ }
+ t++;const n=batch.length,b1=.9,b2=.999,c1=1-b1**t,c2=1-b2**t;
+ const upd=(k,from,to,wd)=>{const p=P[k],g=G[k],m=M[k],v=V[k];for(let i=from;i<to;i++){const gi=g[i]/n;m[i]=b1*m[i]+(1-b1)*gi;v[i]=b2*v[i]+(1-b2)*gi*gi;p[i]-=lr*((m[i]/c1)/(Math.sqrt(v[i]/c2)+1e-8)+wd*p[i])}};
+ for(const r of rows)upd('W1',r*H,r*H+H,WD);                                              // only touched rows: much faster
+ upd('b1',0,H,0);upd('W2',0,H*C,WD);upd('b2',0,C,0);
+ return loss/n;
+}
+function evaluate(set){let fr=0,ex=0,loss=0;for(const e of set){const {p}=forward(e.x);let all=1;FN.forEach((f,i)=>{const o=OFF[i];loss-=Math.log(p[o+e.y[i]]+1e-9);let b=0;for(let k=1;k<CL[i].length;k++)if(p[o+k]>p[o+b])b=k;if(b===e.y[i])fr++;else all=0});ex+=all}return {field:fr/(set.length*FN.length),exact:ex/set.length,loss:loss/set.length}}
+
+// ---------- save the trained AI in this browser ----------
+const KEY='tinyGameAI.v2';
+const enc=a=>{const u=new Uint8Array(a.buffer);let s='';for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)};
+const dec=b=>{const s=atob(b),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return new Float32Array(u.buffer)};
+function save(meta){try{localStorage.setItem(KEY,JSON.stringify({meta,C,D,H,P:Object.fromEntries(Object.entries(P).map(([k,v])=>[k,enc(v)]))}))}catch(e){}}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(!s||s.C!==C||s.D!==D||s.H!==H)return null;P={};for(const k in s.P)P[k]=dec(s.P[k]);return s.meta}catch(e){return null}}
+
+const $=id=>document.getElementById(id),pct=v=>(v*100).toFixed(1)+'%';
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+let trained=false,training=false,hist={tr:[],va:[]};
+function showStats(m){$('sParams').textContent=m.params;$('sEx').textContent=m.ex;$('sField').textContent=m.field;$('sExact').textContent=m.exact;$('sTypo').textContent=m.typo;$('sBest').textContent=m.best;$('sTime').textContent=m.time}
+function drawChart(){
+ try{const c=$('chart'),x=c.getContext('2d'),W=c.width,Hh=c.height,cs=getComputedStyle(c),all=[...hist.tr.map(p=>p[1]),...hist.va.map(p=>p[1])];x.clearRect(0,0,W,Hh);if(!all.length)return;
+  const mx=Math.max(...all),mn=Math.min(...all),X=v=>v*W,Y=v=>8+(Hh-16)*(1-(Math.log(v)-Math.log(mn))/((Math.log(mx)-Math.log(mn))||1));
+  x.lineWidth=3;x.strokeStyle=cs.getPropertyValue('--tr');x.beginPath();hist.tr.forEach(([a,b],i)=>i?x.lineTo(X(a),Y(b)):x.moveTo(X(a),Y(b)));x.stroke();
+  x.fillStyle=cs.getPropertyValue('--va');hist.va.forEach(([a,b])=>{x.beginPath();x.arc(X(a),Y(b),5,0,7);x.fill()});
+ }catch(e){}
+}
+function train(){
+ if(training)return;training=true;trained=false;['trainBtn','genBtn','editBtn'].forEach(i=>$(i).disabled=true);init();hist={tr:[],va:[]};
+ const tr=Array.from({length:9000},()=>makeExample(Math.random()<.3?1+ri(2):0)),va=Array.from({length:800},()=>makeExample(0)),vt=Array.from({length:800},()=>makeExample(1));
+ const params=(D*H+H+H*C+C).toLocaleString();$('sParams').textContent=params;$('sEx').textContent=tr.length.toLocaleString();
+ const BS=32,SPE=Math.ceil(tr.length/BS),EP=14,TOT=SPE*EP,WU=150,PEAK=.008,MIN=.0004,t0=performance.now();
+ let s=0,ema=null,best=1e9,bestEp=0,snap=null,patience=0,stop=false;
+ const lrAt=k=>k<WU?PEAK*k/WU:MIN+.5*(PEAK-MIN)*(1+Math.cos(Math.PI*(k-WU)/(TOT-WU)));       // warmup + cosine decay
+ $('trainNote').textContent='Training… the AI is learning which words mean which game parts.';
+ const tick=()=>{
+  const f0=performance.now();
+  while(performance.now()-f0<14&&s<TOT&&!stop){
+   const e=s%SPE;if(e===0)shuffle(tr);const l=step(tr.slice(e*BS,(e+1)*BS),lrAt(s));ema=ema===null?l:ema*.97+l*.03;s++;
+   if(s%25===0)hist.tr.push([s/TOT,ema]);
+   if(s%SPE===0){const r=evaluate(va);hist.va.push([s/TOT,r.loss]);$('sField').textContent=pct(r.field);$('sExact').textContent=pct(r.exact);
+    if(r.loss<best-1e-4){best=r.loss;bestEp=s/SPE;snap=Object.fromEntries(Object.entries(P).map(([k,v])=>[k,v.slice()]));patience=0}else if(++patience>=3)stop=true}  // early stopping
+  }
+  $('prog').style.width=(s/TOT*100)+'%';$('sTime').textContent=((performance.now()-t0)/1000).toFixed(1)+' s';drawChart();
+  if(s<TOT&&!stop)return requestAnimationFrame(tick);
+  if(snap)P=snap;const r=evaluate(va),rt=evaluate(vt);
+  const meta={params,ex:tr.length.toLocaleString(),field:pct(r.field),exact:pct(r.exact),typo:pct(rt.exact),best:bestEp+' of '+Math.round(s/SPE),time:$('sTime').textContent,hist};
+  showStats(meta);save(meta);training=false;trained=true;$('trainBtn').disabled=false;$('genBtn').disabled=false;$('editBtn').disabled=!S;
+  $('trainNote').textContent='Done, and saved in this browser so it loads instantly next time. It never saw your prompts during training.';
+ };requestAnimationFrame(tick);
+}
+
+// ---------- engine ----------
+const cv=$('game'),ctx=cv.getContext('2d'),TS=32,VW=640,VH=480;
+const PAL={forest:['#3d7a37','#43833c','#24411d','#33592b','🌿'],dungeon:['#37323f','#3d3746','#17141c','#2a2431','🕸️'],space:['#1a1e38','#1f2443','#3d4270','#5a609a','✨'],desert:['#d4ad66','#dbb570','#97703a','#b48a4b','🌵'],snow:['#e6eef5','#dce6ef','#7fa4bf','#a8c6db','❄️'],ocean:['#1d6b86','#217592','#0f4a5e','#1a6a83','🐚'],volcano:['#4a1f17','#52231a','#1f0b08','#3a1510','🔥']};
+const PL={knight:'🤺',cat:'🐱',robot:'🤖',wizard:'🧙',dog:'🐶',ninja:'🥷',frog:'🐸'};
+const EN={bats:{e:'🦇',spd:1.25,jit:1.1},slimes:{e:'🟢',spd:.8,hop:1},skeletons:{e:'💀',spd:1},aliens:{e:'👾',spd:1.1},ghosts:{e:'👻',spd:.8,ghost:1},spiders:{e:'🕷️',spd:1.15},dragons:{e:'🐲',spd:.9,big:1}};
+const THEME_EN={forest:'slimes',dungeon:'skeletons',space:'aliens',desert:'bats',snow:'ghosts',ocean:'slimes',volcano:'dragons'};
+const PU={hearts:'💖',boots:'👟',shield:'🛡️'};
+const EF=s=>s+'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+let S=null;const keys={};
+
+function resolve(pred,base){
+ const r={},src={};
+ FN.forEach(f=>{const u=pred[f].use;if(u!=='auto'){r[f]=u;src[f]='ai'}else if(base){r[f]=base[f];src[f]='kept'}else{r[f]='auto';src[f]='auto'}});
+ const fill=(f,v)=>{if(r[f]==='auto')r[f]=v};
+ fill('theme',rnd(Object.keys(F.theme)));fill('player',rnd(Object.keys(F.player)));fill('enemy',THEME_EN[r.theme]);fill('count','some');
+ fill('speed','normal');fill('difficulty','normal');fill('size','medium');fill('powerup','none');fill('goal',rnd(['coins','gems','exit','survive']));
+ if(r.enemy==='none'&&src.count==='ai'&&src.enemy!=='ai')r.enemy=THEME_EN[r.theme];
+ if(r.enemy==='none'&&r.goal==='survive')r.goal='coins';
+ return {r,src};
+}
+function bfs(grid,sx,sy){const d=grid.map(r=>r.map(()=>-1)),q=[[sx,sy]];d[sy][sx]=0;for(let h=0;h<q.length;h++){const [x,y]=q[h];for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;if(grid[ny]&&grid[ny][nx]===0&&d[ny][nx]<0){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}}}return d}
+function build(r){
+ const diff={easy:.7,normal:1,hard:1.4}[r.difficulty],[cols,rows]={small:[16,12],medium:[20,15],big:[34,24]}[r.size],area=cols*rows/300;let grid,dist,cells;
+ for(let tries=0;tries<40;tries++){
+  grid=Array.from({length:rows},(_,y)=>Array.from({length:cols},(_,x)=>(x===0||y===0||x===cols-1||y===rows-1)?1:0));
+  const blocks=Math.round((r.goal==='exit'?36:16)*area);
+  for(let b=0;b<blocks;b++){const x=1+ri(cols-2),y=1+ri(rows-2),len=2+ri(r.goal==='exit'?6:4),hz=Math.random()<.5;for(let i=0;i<len;i++){const cx=hz?x+i:x,cy=hz?y:y+i;if(cx>0&&cy>0&&cx<cols-1&&cy<rows-1)grid[cy][cx]=1}}
+  for(let y=1;y<=3;y++)for(let x=1;x<=3;x++)grid[y][x]=0;
+  dist=bfs(grid,2,2);cells=[];dist.forEach((row,y)=>row.forEach((d,x)=>{if(d>=0)cells.push({x,y,d})}));
+  if(cells.length>cols*rows*.5)break;
+ }
+ grid.forEach((row,y)=>row.forEach((v,x)=>{if(!v&&dist[y][x]<0)grid[y][x]=1}));
+ const used=new Set(['2,2']),take=minD=>{const c=shuffle(cells.filter(c=>c.d>=minD&&!used.has(c.x+','+c.y)))[0]||cells[ri(cells.length)];used.add(c.x+','+c.y);return {x:c.x*TS+16,y:c.y*TS+16}};
+ const hp={easy:5,normal:3,hard:2}[r.difficulty];
+ const s={r,grid,cols,rows,pal:PAL[r.theme],t:0,state:'play',p:{x:2*TS+16,y:2*TS+16,r:11},inv:0,boost:0,shield:0,hp,maxhp:hp,
+  pspd:{slow:115,normal:150,fast:205}[r.speed],espd:85*Math.sqrt(diff)*({slow:.85,normal:1,fast:1.15}[r.speed]),aggro:200+90*diff,
+  decor:shuffle(cells.slice()).slice(0,Math.round(14*area)).map(c=>({x:c.x*TS+16,y:c.y*TS+16})),items:[],pups:[],exit:null,enemies:[],got:0,need:0,survive:{easy:20,normal:30,hard:45}[r.difficulty],spawnT:8};
+ const rules=r.rules||[],needN=Math.max(0,...rules.filter(x=>x.trig==='score').map(x=>+x.tn)),usesCollect=rules.some(x=>x.trig==='collect'||x.trig==='score');
+ s.rules=rules.map(x=>({...x,acc:0,fired:false}));s.collected=0;s.freeze=0;s.msg=null;s.keys=[];s.spawnType=r.enemy==='none'?THEME_EN[r.theme]:r.enemy;
+ s.exitLocked=rules.some(x=>x.act==='open_exit');s.espd0=0;
+ if(r.goal==='coins'||r.goal==='gems'){s.need=Math.max(needN,Math.round((r.goal==='coins'?10:6)*Math.sqrt(area)));for(let i=0;i<s.need;i++)s.items.push(take(3))}
+ else if(usesCollect)for(let i=0;i<Math.max(3,needN);i++)s.keys.push(take(3));
+ if(r.goal==='exit'||s.exitLocked){const far=cells.reduce((a,b)=>b.d>a.d?b:a);s.exit={x:far.x*TS+16,y:far.y*TS+16};used.add(far.x+','+far.y)}
+ const pu=r.powerup==='none'&&rules.some(x=>x.trig==='powerup')?'hearts':r.powerup;
+ if(pu!=='none')for(let i=0;i<(r.size==='big'?5:3);i++)s.pups.push({...take(4),type:pu});
+ const n=r.enemy==='none'?0:Math.max(1,Math.round({few:3,some:6,many:10}[r.count]*diff*area));
+ for(let i=0;i<n;i++)s.enemies.push(enemy(r.enemy,take(7)));
+ s.espd0=s.espd;S=s;$('restartBtn').disabled=false;$('editBtn').disabled=!trained;
+}
+function floorSpot(minD){let pos,k=0;do{pos={x:(1+ri(S.cols-2))*TS+16,y:(1+ri(S.rows-2))*TS+16};k++}while(k<80&&(solid(pos.x,pos.y)||Math.hypot(pos.x-S.p.x,pos.y-S.p.y)<minD));return pos}
+const ACT_TEXT={spawn:n=>n==='3'?'3 more enemies appear!':'A new enemy appears!',faster:()=>'Enemies speed up!',slower:()=>'Enemies slow down',boost:()=>'Speed boost!',heal:()=>'+1 heart',teleport:()=>'Teleported!',open_exit:()=>'The exit is open!',freeze:()=>'Enemies frozen!'};
+function act(x){
+ if(x.act==='spawn')for(let i=0;i<+x.an;i++)S.enemies.push(enemy(S.spawnType,floorSpot(200)));
+ else if(x.act==='faster')S.espd=Math.min(S.espd*1.25,S.espd0*3);
+ else if(x.act==='slower')S.espd=Math.max(S.espd*.8,S.espd0*.3);
+ else if(x.act==='boost')S.boost=4;
+ else if(x.act==='heal')S.hp=Math.min(S.hp+1,S.maxhp+2);
+ else if(x.act==='teleport'){const q=floorSpot(0);S.p.x=q.x;S.p.y=q.y}
+ else if(x.act==='open_exit')S.exitLocked=false;
+ else if(x.act==='freeze')S.freeze=3;
+ S.msg={text:ACT_TEXT[x.act](x.an),t:2};
+}
+function fire(ev){
+ if(ev==='collect'){S.collected++;for(const x of S.rules)if(x.trig==='score'&&!x.fired&&S.collected>=+x.tn){x.fired=true;act(x)}}
+ for(const x of S.rules)if(x.trig===ev)act(x);
+}
+function enemy(type,pos){return {...pos,r:EN[type].big?13:11,type,...EN[type],dx:0,dy:0,tt:0,stuck:0,ph:Math.random()*6}}
+function solid(px,py){const x=Math.floor(px/TS),y=Math.floor(py/TS);return y<0||y>=S.rows||x<0||x>=S.cols||S.grid[y][x]===1}
+function blocked(x,y,r){return solid(x-r,y-r)||solid(x+r,y-r)||solid(x-r,y+r)||solid(x+r,y+r)}
+function move(e,dx,dy){if(e.ghost){e.x=Math.min(Math.max(e.x+dx,TS+12),S.cols*TS-TS-12);e.y=Math.min(Math.max(e.y+dy,TS+12),S.rows*TS-TS-12);return}if(!blocked(e.x+dx,e.y,e.r))e.x+=dx;if(!blocked(e.x,e.y+dy,e.r))e.y+=dy}
+
+function update(dt){
+ if(!S||S.state!=='play')return;S.t+=dt;const p=S.p;
+ let dx=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0),dy=(keys.ArrowDown||keys.KeyS?1:0)-(keys.ArrowUp||keys.KeyW?1:0);
+ if(dx&&dy){dx*=.7071;dy*=.7071}const ps=S.pspd*(S.boost>0?1.5:1);move(p,dx*ps*dt,dy*ps*dt);
+ if(S.inv>0)S.inv-=dt;if(S.boost>0)S.boost-=dt;if(S.shield>0)S.shield-=dt;
+ for(const x of S.rules)if(x.trig==='every'){x.acc+=dt;if(x.acc>=+x.tn){x.acc-=+x.tn;act(x)}}
+ if(S.freeze>0)S.freeze-=dt;if(S.msg&&(S.msg.t-=dt)<=0)S.msg=null;
+ for(const e of S.enemies){
+  const ax=p.x-e.x,ay=p.y-e.y,d=Math.hypot(ax,ay)||1;e.tt-=dt;if(e.stuck>0)e.stuck-=dt;
+  if(d<S.aggro&&e.stuck<=0&&S.shield<=0){e.dx=ax/d;e.dy=ay/d}else if(e.tt<=0){const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a);e.tt=1+Math.random()*1.5}
+  let sp=S.freeze>0?0:S.espd*e.spd*dt;if(e.hop)sp*=Math.sin(S.t*6+e.ph)>0?1.8:.15;
+  let mx=e.dx*sp,my=e.dy*sp;if(e.jit){mx+=(Math.random()-.5)*e.jit*sp*2;my+=(Math.random()-.5)*e.jit*sp*2}
+  const ox=e.x,oy=e.y;move(e,mx,my);
+  if(!e.ghost&&!e.hop&&Math.hypot(e.x-ox,e.y-oy)<sp*.3){e.stuck=.6;const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a)}
+  if(d<(e.big?24:20)&&S.inv<=0&&S.shield<=0){S.hp--;S.inv=1.2;move(p,-ax/d*22,-ay/d*22);if(S.hp<=0)S.state='lose';else fire('hit')}
+ }
+ const near=o=>Math.hypot(o.x-p.x,o.y-p.y)<20;
+ S.items=S.items.filter(it=>near(it)?(S.got++,fire('collect'),false):true);
+ S.keys=S.keys.filter(k=>near(k)?(fire('collect'),false):true);
+ S.pups=S.pups.filter(u=>{if(!near(u))return true;setTimeout(()=>fire('powerup'),0);if(u.type==='hearts')S.hp=Math.min(S.hp+1,S.maxhp+2);else if(u.type==='boots')S.boost=6;else S.shield=6;return false});
+ if(S.need&&S.got>=S.need)S.state='win';
+ if(S.exit&&near(S.exit)&&!S.exitLocked)S.state='win';
+ if(S.r.goal==='survive'){if(S.t>=S.survive)S.state='win';S.spawnT-=dt;if(S.spawnT<=0&&S.r.enemy!=='none'){S.spawnT=8;let pos,k=0;do{pos={x:(1+ri(S.cols-2))*TS+16,y:(1+ri(S.rows-2))*TS+16};k++}while(k<60&&(solid(pos.x,pos.y)||Math.hypot(pos.x-p.x,pos.y-p.y)<220));S.enemies.push(enemy(S.r.enemy,pos))}}
+}
+function txt(s,x,y,size,col,font){ctx.font=font||EF(size);ctx.fillStyle=col||'#fff';ctx.fillText(s,x,y)}
+function draw(){
+ ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#0b0d1a';ctx.fillRect(0,0,VW,VH);
+ if(!S){txt('🎮',320,190,64);txt(trained?'Describe a game and press New game':'Training the AI…',320,270,0,'#d9dcf5','600 20px Inter,system-ui,sans-serif');return}
+ const [f1,f2,w,wt,dec]=S.pal,mw=S.cols*TS,mh=S.rows*TS;
+ const cx=mw<=VW?-(VW-mw)/2:Math.min(Math.max(S.p.x-VW/2,0),mw-VW),cy=mh<=VH?-(VH-mh)/2:Math.min(Math.max(S.p.y-VH/2,0),mh-VH);
+ ctx.save();ctx.translate(-Math.round(cx),-Math.round(cy));
+ const x0=Math.max(0,Math.floor(cx/TS)),x1=Math.min(S.cols,Math.ceil((cx+VW)/TS)+1),y0=Math.max(0,Math.floor(cy/TS)),y1=Math.min(S.rows,Math.ceil((cy+VH)/TS)+1);
+ for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){if(S.grid[y][x]){ctx.fillStyle=wt;ctx.fillRect(x*TS,y*TS,TS,TS);ctx.fillStyle=w;ctx.fillRect(x*TS,y*TS+TS-9,TS,9)}else{ctx.fillStyle=(x+y)%2?f1:f2;ctx.fillRect(x*TS,y*TS,TS,TS)}}
+ ctx.globalAlpha=.4;for(const d of S.decor)txt(dec,d.x,d.y,15);ctx.globalAlpha=1;
+ if(S.exit)txt(S.exitLocked?'🔒':'🚪',S.exit.x,S.exit.y,26);
+ for(const k of S.keys)txt('🔑',k.x,k.y+Math.sin(S.t*4+k.x)*2,20);
+ for(const it of S.items)txt(S.r.goal==='coins'?'🪙':'💎',it.x,it.y+Math.sin(S.t*4+it.x)*2,20);
+ for(const u of S.pups)txt(PU[u.type],u.x,u.y+Math.sin(S.t*5+u.y)*2,20);
+ for(const e of S.enemies){if(e.ghost)ctx.globalAlpha=.8;txt(e.e,e.x,e.y,e.big?30:24);ctx.globalAlpha=1}
+ if(S.shield>0){ctx.strokeStyle='#7fd6ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(S.p.x,S.p.y,19+Math.sin(S.t*8)*2,0,7);ctx.stroke()}
+ if(!(S.inv>0&&(S.t*12|0)%2))txt(PL[S.r.player],S.p.x,S.p.y,26);
+ ctx.restore();
+ ctx.fillStyle='#000a';ctx.fillRect(0,0,VW,30);
+ const g=S.r.goal,goalTxt=g==='survive'?`Survive: ${Math.max(0,S.survive-S.t).toFixed(1)} s`:g==='exit'?(S.exitLocked?'Exit locked 🔒':'Find the exit 🚪'):`${g==='coins'?'Coins':'Gems'}: ${S.got}/${S.need}`;
+ const keyTxt=S.rules&&S.rules.length&&!S.items.length&&S.collected+S.keys.length?`  ·  collected ${S.collected}`:'';
+ ctx.textAlign='left';txt(goalTxt+keyTxt,10,15,0,'#fff','600 15px Inter,system-ui,sans-serif');
+ if(S.msg){ctx.textAlign='center';ctx.fillStyle='#000a';ctx.fillRect(170,440,300,30);txt(S.msg.text,320,455,0,'#b6f24a','600 16px Inter,system-ui,sans-serif')}
+ const fx=(S.boost>0?`👟 ${S.boost.toFixed(1)}s  `:'')+(S.shield>0?`🛡️ ${S.shield.toFixed(1)}s`:'');ctx.textAlign='center';if(fx)txt(fx,320,15,0,'#fff','600 15px Inter,"Segoe UI Emoji","Noto Color Emoji",sans-serif');
+ ctx.textAlign='right';txt('❤️'.repeat(Math.max(0,S.hp)),630,15,15);ctx.textAlign='center';
+ if(S.state!=='play'){ctx.fillStyle='#000b';ctx.fillRect(0,0,VW,VH);txt(S.state==='win'?'You win!':'Game over',320,210,0,S.state==='win'?'#b6f24a':'#ff7a8a','700 46px "Pixelify Sans",system-ui,sans-serif');txt('Press R or Enter to play again',320,265,0,'#e6e8f7','500 17px Inter,system-ui,sans-serif')}
+}
+let last=performance.now();
+function loop(now){update(Math.min(.05,(now-last)/1000));last=now;draw();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+
+// ---------- prompt -> recipe -> game ----------
+const GATE=.45;
+function predict(text){
+ const {p}=forward(feats(text)),out={};
+ FN.forEach((f,i)=>{let b=0;for(let k=1;k<CL[i].length;k++)if(p[OFF[i]+k]>p[OFF[i]+b])b=k;const v=CL[i][b],c=p[OFF[i]+b];out[f]={value:v,conf:c,k:b,use:c<GATE?'auto':v,unsure:c<GATE&&v!=='auto'}});
+ return out;
+}
+function explain(text,pred){                                  // remove each word and see which one the choice depended on most
+ const words=text.split(/\s+/).filter(Boolean),res={};if(words.length<2)return res;
+ const probs=words.map((_,i)=>forward(feats(words.filter((_,j)=>j!==i).join(' '))).p);
+ FN.forEach((f,fi)=>{if(pred[f].use==='auto')return;const ix=OFF[fi]+pred[f].k;let best=-1,bd=.05;probs.forEach((p,i)=>{const d=pred[f].conf-p[ix];if(d>bd){bd=d;best=i}});if(best>=0)res[f]=words[best].replace(/[^\w'-]/g,'')});
+ return res;
+}
+function generate(edit){
+ const text=$('prompt').value.trim();if(!text||!trained)return;if(edit&&!S)edit=false;
+ const t0=performance.now(),pred=predict(text),why=explain(text,pred),ms=performance.now()-t0,{r,src}=resolve(pred,edit?S.r:null);
+ $('recipe').innerHTML=FN.map(f=>{
+  const v=src[f]==='ai'?esc(r[f]):`<span class="${src[f]}">${src[f]==='kept'?'kept: ':'auto → '}${esc(r[f])}</span>`;
+  const w=why[f]?`<span class="why">from “${esc(why[f])}”</span>`:pred[f].unsure?`<span class="why">unsure (${esc(pred[f].value)}?), skipped</span>`:'';
+  return `<tr><td>${f}</td><td>${v}${w}</td><td>${src[f]==='ai'?Math.round(pred[f].conf*100)+'%':''}</td></tr>`}).join('');
+ $('genNote').textContent=`AI answered in ${ms.toFixed(1)} ms. "auto" means you didn't mention it, so the engine picks; "kept" means it stayed the same as before.`;
+ build(r);cv.focus();
+}
+const IDEAS=['a fast ninja escaping a spooky dungeon full of spiders','robot collecting gems on mars with lots of aliens, hard mode, big map','chill wizard in the snow, peaceful, collect coins, with hearts','survive hordes of dragons in a volcano as a knight with shields','an easy game for kids with a froggy at the beach','pls make a spooky dungon with ghosts n stuff'];
+const CHANGES=['make it harder','faster','more enemies','add speed boots','bigger map','switch to a cat','set it in space'];
+$('ideas').innerHTML=IDEAS.map((e,i)=>`<button data-i="${i}">${esc(e)}</button>`).join('');
+$('changes').innerHTML=CHANGES.map((e,i)=>`<button data-i="${i}">${esc(e)}</button>`).join('');
+$('ideas').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!trained)return;$('prompt').value=IDEAS[b.dataset.i];generate(false)});
+$('changes').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!trained)return;$('prompt').value=CHANGES[b.dataset.i];generate(!!S)});
+$('genBtn').addEventListener('click',()=>generate(false));
+$('editBtn').addEventListener('click',()=>generate(true));
+$('restartBtn').addEventListener('click',()=>{if(S){build(S.r);cv.focus()}});
+$('trainBtn').addEventListener('click',train);
+$('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();generate(e.ctrlKey||e.metaKey)}});
+addEventListener('keydown',e=>{if(e.target.tagName==='TEXTAREA')return;keys[e.code]=true;
+ if(S&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+ if(S&&S.state!=='play'&&(e.code==='KeyR'||e.code==='Enter'))build(S.r)});
+addEventListener('keyup',e=>{keys[e.code]=false});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
+const BAKED=window.GAMEAI_RECIPE||null;
+if(BAKED){document.body.classList.add('baked');document.title='Game AI: '+BAKED.player+' in '+BAKED.theme;build(BAKED);$('recipe').innerHTML=FN.map(f=>`<tr><td>${f}</td><td>${esc(BAKED[f])}</td><td></td></tr>`).join('');$('genNote').textContent='Recipe sent from the Game AI terminal.';cv.focus();}
+const saved=load();
+if(saved){trained=true;hist=saved.hist||hist;showStats(saved);drawChart();$('prog').style.width='100%';$('genBtn').disabled=false;$('trainNote').textContent='Loaded the AI you trained earlier. Press Train from scratch to retrain.'}
+else if(!BAKED)train();
+}
+</script>
+</body></html>

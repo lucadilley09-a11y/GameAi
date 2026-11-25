@@ -1,0 +1,9 @@
+# Install PyTorch first with the command from pytorch.org (CUDA build for your GPU).
+numpy
+onnx
+onnxscript
+onnxruntime
+rich
+transformers
+accelerate
+bitsandbytes
