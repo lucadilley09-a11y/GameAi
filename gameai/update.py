@@ -70,7 +70,8 @@ def code_files(root=None):
 def make_manifest(root=None):
     """Written before every published version: the SHA-256 of every program file git tracks."""
     root = root or ROOT
-    tracked = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout.split("\n")
+    # tracked files plus new ones not yet added (but never ignored ones), so the list can't miss a new file
+    tracked = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"], cwd=root, capture_output=True, text=True, check=True).stdout.split("\n")
     files = {rel: sha256(open(os.path.join(root, rel), "rb").read()) for rel in tracked if rel and is_code(rel)}
     json.dump({"files": files}, open(os.path.join(root, MANIFEST), "w"), indent=0, sort_keys=True)
     return len(files)
