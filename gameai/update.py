@@ -16,7 +16,7 @@ import hashlib, io, json, os, shutil, subprocess, sys, time, urllib.request, zip
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 KEEP = {"data", "models", "runs", "bench", "checkpoints", "learn", "memory", "games", "play", "for-chromebook", "export",
-        ".venv", "logs", "update.json", ".version", "backup"}  # never overwritten by an update
+        ".venv", "logs", "update.json", ".version", "backup", "sealed"}  # never overwritten by an update
 API = "https://api.github.com/repos/{repo}/commits/{branch}"
 TREE = "https://api.github.com/repos/{repo}/git/trees/{sha}?recursive=1"
 MANIFEST = "MANIFEST.sha256.json"

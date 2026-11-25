@@ -142,6 +142,8 @@ def main():
         e_rows = load_jsonl("data/extra.jsonl")
         rows += e_rows
         print(f"using {len(e_rows)} extra lessons (its mistakes and your corrections)", flush=True)
+    from .guard import filter_training
+    rows = filter_training(rows)  # never learn a test question, or a reworded copy of one (validation, tests, sealed sets)
     val_rows = load_jsonl(f"{a.data}/val.jsonl")
     val = encode(val_rows, tok)
     train_d, val_d = GpuData(encode(rows, tok), tok, device), GpuData(val, tok, device)
