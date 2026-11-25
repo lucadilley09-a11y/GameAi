@@ -18,6 +18,13 @@ def running():
         return False
 
 
+def version_id():
+    try:
+        return open(".version", encoding="utf-8").read()
+    except OSError:
+        return ""
+
+
 def popup(text):
     """Show an error box (there's no console to print to)."""
     try:
@@ -35,16 +42,25 @@ def main():
     if running():
         if not background: open_window(URL)
         return
-    first = not background
+    first, updated, rolled_back = not background, False, False
     while True:
         with open("logs/app.log", "a", encoding="utf-8") as log:
             log.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n"); log.flush()
+            before = version_id()
             subprocess.run([sys.executable, "-m", "gameai.update"], stdout=log, stderr=log, creationflags=NO_WINDOW)
+            updated = updated or version_id() != before
             args = [sys.executable, "-m", "gameai.app", "--auto-quit"] + ([] if first else ["--no-window"]) + (["--stay"] if background else [])
             t0 = time.time()
             code = subprocess.run(args, stdout=log, stderr=log, creationflags=NO_WINDOW).returncode
+            if code not in (0, 42) and time.time() - t0 < 60 and updated and not rolled_back:
+                # the new version crashed right away: put the previous one back and start that instead
+                log.write("The new version failed to start: putting the previous version back.\n"); log.flush()
+                subprocess.run([sys.executable, "-m", "gameai.update", "--rollback"], stdout=log, stderr=log, creationflags=NO_WINDOW)
+                rolled_back, updated = True, False
+                continue
         first = False
         if code == 42:
+            updated = True
             continue  # updated: restart; the open window reloads by itself
         if code != 0 and time.time() - t0 < 60:
             tail = open("logs/app.log", encoding="utf-8", errors="replace").read().splitlines()[-12:]

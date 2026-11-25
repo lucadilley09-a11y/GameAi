@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 PORT = 8765
 SHARE_PORT = 8766
-STATE = {"mtime": 0, "model": None, "tok": None, "device": "cpu", "lock": threading.Lock(),
+STATE = {"busy": 0, "mtime": 0, "model": None, "tok": None, "device": "cpu", "lock": threading.Lock(),
          "job": {"running": False, "stage": "", "step": 0, "total": 0, "loss": None, "evals": [], "log": [], "ok": None, "started": 0}}
 
 
@@ -47,7 +47,9 @@ def status():
         pass
     from .update import local_version
     v = STATE.setdefault("started_version", local_version())  # the version this running app is, not the one just downloaded
-    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
+    from .update import mode as update_mode
+    return {"updating": STATE.get("updating"), "update_waiting": bool(STATE.get("update_waiting")), "update_available": STATE.get("update_available"),
+            "update_mode": update_mode(), "app": True, "version": (v.get("sha") or "dev")[:7], "update_msg": v.get("message"), "sharing": bool(STATE.get("sharing")), "note": STATE.get("note"), "loaded": m is not None, "params": m.num_params() if m else 0, "gpu": gpu, "fresh": s,
             "training": STATE["job"]["running"], "learning": STATE["job"].get("kind") == "learn" and STATE["job"]["running"]}
 
 
@@ -147,6 +149,13 @@ class H(BaseHTTPRequestHandler):
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
+        STATE["busy"] += 1  # an update never restarts the app in the middle of a request (a game, code, a test...)
+        try:
+            return self.post()
+        finally:
+            STATE["busy"] -= 1
+
+    def post(self):
         path, b = self.path, self.body()
         if path == "/api/decode":
             if not STATE["model"]: return self.send(409, {"error": "no model yet: type /train"})
@@ -243,10 +252,22 @@ class H(BaseHTTPRequestHandler):
             threading.Thread(target=quit_soon, daemon=True).start()
             return self.send(200, {"ok": True})
         if path == "/api/update":
-            from .update import check
+            from .update import check, rollback
+            if b.get("rollback"):
+                if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
+                r = rollback()
+                if r.get("ok"): threading.Thread(target=restart_soon, daemon=True).start()
+                return self.send(200, r)
             r = check(install=not STATE["job"]["running"], quiet=True)
-            if r.get("installed"): threading.Thread(target=restart_soon, daemon=True).start()
+            if r.get("installed"): STATE["update_available"] = None; threading.Thread(target=restart_soon, daemon=True).start()
             return self.send(200, r)
+        if path == "/api/updates":
+            from .update import MODES, save_config
+            m = str(b.get("mode", ""))
+            if m not in MODES: return self.send(400, {"error": "use instant, manual or off"})
+            save_config(mode=m)
+            if m != "manual": STATE["update_available"] = None
+            return self.send(200, {"ok": True, "mode": m})
         if path == "/api/test":
             if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             threading.Thread(target=run_job, args=(["gameai.bench"],), daemon=True).start()
@@ -287,7 +308,7 @@ def lan_ip():
 
 class Shared(H):
     """The same app for other devices on your Wi-Fi (your Chromebook), protected by a 4-digit code."""
-    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook", "/api/quit", "/api/autostart")
+    LOCAL_ONLY = ("/api/share", "/api/folder", "/api/chromebook", "/api/quit", "/api/autostart", "/api/updates")
 
     def allowed(self):
         from http.cookies import SimpleCookie
@@ -430,19 +451,30 @@ def watchdog():
 
 def auto_update():
     """Every 15 seconds, ask GitHub (tiny request) whether there's a newer version. If so, install it and
-    restart; the open window reloads by itself. During training it waits until the job is done."""
-    from .update import check, config, head_sha, local_version
-    cfg = config()
-    if not cfg: return
+    restart; the open window reloads by itself. During training it waits until the job is done, and it never
+    restarts in the middle of a request. Offline, it waits longer and longer between tries (up to 15 minutes).
+    update.json "mode": instant (install by itself), manual (only tell you), off (never go online)."""
+    from .update import check, config, head_sha, local_version, mode
+    wait = 15
     while True:
-        time.sleep(15)
+        time.sleep(wait)
+        cfg = config()
+        if not cfg or mode(cfg) == "off":
+            wait = 15; STATE["update_available"] = None; continue
         try:
             sha = head_sha(cfg)
+            wait = 15
         except Exception:
-            continue  # offline: try again later
-        if not sha or sha == local_version().get("sha"):
-            STATE["update_waiting"] = False
+            wait = min(wait * 2, 900)  # offline: back off
             continue
+        if not sha or sha in (local_version().get("sha"), cfg.get("skip")):
+            STATE["update_waiting"] = False; STATE["update_available"] = None
+            continue
+        if mode(cfg) == "manual":
+            STATE["update_available"] = sha[:7]  # the page asks you; /update installs it
+            continue
+        if STATE["busy"]:
+            continue  # something is being made right now: check again in 15 seconds
         if STATE["job"]["running"]:
             STATE["update_waiting"] = True  # the page tells you it will install after the job
             if STATE["job"].get("kind") == "learn" and not os.path.exists("learn/RESUME"):

@@ -166,9 +166,16 @@ No training from scratch.
 ## Automatic updates
 
 The app updates itself from the project's GitHub repo (set in `update.json`): when `start.bat` starts,
-and every 15 seconds while it runs (if training is running, it waits until it finishes). It downloads only the code,
-restarts in a second, and the window reloads, including on a Chromebook connected with `/share`.
-Your trained AI, data, games and ratings are never touched. `/update` checks right away.
+and every 15 seconds while it runs (waiting longer and longer if you're offline). It never restarts during
+training or while something is being made. Your trained AI, data, games and ratings are never touched.
+
+- Every update is checked before anything changes: it must be the exact version asked for, and every file must
+  match that version's SHA-256 list and GitHub's own file hashes. Anything else is refused.
+- The previous version is kept in `backup/previous`. `/update rollback` puts it back. If a new version crashes
+  right after starting, the previous one is put back automatically and that broken version is never reinstalled.
+- `/updates instant` (default while the AI is being built), `/updates manual` (tells you, installs on `/update`),
+  `/updates off` (never goes online to look for updates).
+- `python -m tests.test_updater` runs the updater safety tests (no internet needed).
 
 ## Manual commands (optional)
 
