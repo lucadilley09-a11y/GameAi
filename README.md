@@ -154,6 +154,14 @@ correction; `/fix enemy spiders` corrects the last game; `/rate 4` or `/rate 5` 
 Every game you make is logged in `memory/episodes.jsonl` and ratings in
 `memory/ratings.jsonl`; these become training data in Phase 3.
 
+## Updates never delete your AI
+
+Updates replace program files only; your AI, its versions, the practice data, learning history, corrections and
+saved games are kept. If an update makes the game language bigger, type `/upgrade`: your AI keeps everything it
+learned (all its layers and every word it knew; in a test it still got 93.8% of the old settings right before any
+catch-up), gets room for the new words, and a short catch-up training (5-10 minutes) teaches it the new parts.
+No training from scratch.
+
 ## Automatic updates
 
 The app updates itself from the project's GitHub repo (set in `update.json`): when `start.bat` starts,

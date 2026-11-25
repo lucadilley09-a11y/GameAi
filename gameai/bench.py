@@ -148,6 +148,8 @@ def main():
         better = gain > 0.0005 and not drops
         why = f"overall {gain*100:+.2f} points" + (f", but worse on: {', '.join(drops)}" if drops else "")
     promoted = gate and better
+    if old is None and not promoted and fresh["validity"] == 1.0:
+        promoted, why = True, "no working AI in use yet (or it knew an older game language), so this one is used; learning keeps improving it"
     result = {"checkpoint": a.checkpoint, "train_run": ck.get("run"), "fresh_seed": seed, **res,
               "fresh": fresh, "total": total(res), "params": model.num_params(), "old": old, "old_params": old_params, "old_total": total(old) if old else None, "why": why,
               "gate_passed": gate, "promoted": promoted}

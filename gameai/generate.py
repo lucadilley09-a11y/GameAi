@@ -72,14 +72,39 @@ def decode(model, tok, prompts, device, batch=512, gate=GATE):
     return out
 
 
-def load(path, device="cpu"):
+def load(path, device="cpu", upgrade=False):
+    """upgrade=True: an AI from an older game language is carried over to the new one (see upgrade())."""
     ck = torch.load(path, map_location=device, weights_only=False)
     tok = Tokenizer()
     if ck["tokenizer"] != tok.itos:
-        raise ValueError("This AI was trained on an older version of the game language. Train a new one with /train.")
+        if not upgrade:
+            raise ValueError("This AI knows an older version of the game language. Type /upgrade to teach it the new parts (it keeps what it learned).")
+        return upgrade_model(ck, tok, device), tok, ck
     model = GameAI(Config(**ck["config"])).to(device)
     model.load_state_dict(ck["model"])
     return model.eval(), tok, ck
+
+
+def upgrade_model(ck, tok, device="cpu"):
+    """Carry an AI over to a bigger game language: everything it learned stays (all its layers, and the
+    meaning of every word it already knew); only the new words start fresh. Then a short catch-up
+    training (/upgrade) teaches it the new parts, instead of training a new AI from scratch."""
+    old_itos, cfg = ck["tokenizer"], dict(ck["config"])
+    cfg["vocab_size"], cfg["max_len"] = tok.vocab_size, max(cfg.get("max_len", 0), tok.max_len)
+    model = GameAI(Config(**cfg)).to(device)
+    new_sd, old_sd = model.state_dict(), ck["model"]
+    old_index = {w: i for i, w in enumerate(old_itos)}
+    for k, v in old_sd.items():
+        if k in ("emb.weight", "head.weight"):
+            for i, w in enumerate(tok.itos):  # copy each known word's row; new words keep their fresh start
+                j = old_index.get(w)
+                if j is not None: new_sd[k][i] = v[j].to(new_sd[k].dtype)
+        elif k in new_sd and new_sd[k].shape == v.shape:
+            new_sd[k] = v
+    model.load_state_dict(new_sd)
+    known = sum(w in old_index for w in tok.itos)
+    print(f"Upgraded the AI to the new game language: kept everything it learned, {known} known words, {tok.vocab_size - known} new ones to learn.", flush=True)
+    return model
 
 
 def show(model, tok, prompt, device):

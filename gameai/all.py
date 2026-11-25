@@ -17,6 +17,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="small")
     ap.add_argument("--steps", default=None, help="default depends on the size")
+    ap.add_argument("--init", default=None, help="upgrade this AI (keeps what it learned) instead of starting from scratch")
     a = ap.parse_args()
     from .recipe import GRAMMAR_VERSION
     old = json.load(open("data/manifest.json")) if os.path.exists("data/manifest.json") else None
@@ -27,7 +28,10 @@ def main():
         step("1/4  Making training data", ["gameai.datagen"])
     else:
         print("1/4  Training data already exists, reusing it")
-    step(f"2/4  Training the AI from scratch ({a.size})", ["gameai.train", "--size", a.size] + (["--steps", a.steps] if a.steps else []))
+    if a.init:
+        step("2/4  Teaching your AI the new parts (it keeps what it learned)", ["gameai.train", "--init", a.init, "--steps", a.steps or "1500", "--lr", "1.5e-3", "--muon-lr", "0.01"])
+    else:
+        step(f"2/4  Training the AI from scratch ({a.size})", ["gameai.train", "--size", a.size] + (["--steps", a.steps] if a.steps else []))
     step("3/4  Testing it", ["gameai.bench"])
     if os.path.exists("models/current.pt"):
         step("4/4  Making the browser/Chromebook version", ["gameai.export_onnx"])

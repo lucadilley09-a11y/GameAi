@@ -143,7 +143,11 @@ def main():
     if a.init:
         from .model import Config
         ck0 = torch.load(a.init, map_location=device, weights_only=False)
-        model = GameAI(Config(**ck0["config"])).to(device); model.load_state_dict(ck0["model"])
+        if ck0.get("tokenizer") != tok.itos:  # older game language: carry it over instead of starting from scratch
+            from .generate import upgrade_model
+            model = upgrade_model(ck0, tok, device)
+        else:
+            model = GameAI(Config(**ck0["config"])).to(device); model.load_state_dict(ck0["model"])
         a.size = ck0.get("size", a.size)
     else:
         model = GameAI(make_config(a.size, tok.vocab_size, tok.max_len)).to(device)

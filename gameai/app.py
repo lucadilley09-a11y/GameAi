@@ -154,6 +154,10 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/train":
             if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             size = b.get("size", "small")
+            if size == "upgrade":  # teach the current AI a bigger game language, keeping what it learned
+                if not os.path.exists("models/current.pt"): return self.send(409, {"error": "There's no AI to upgrade yet. Type /train."})
+                threading.Thread(target=run_job, args=(["gameai.all", "--init", "models/current.pt"],), daemon=True).start()
+                return self.send(200, {"ok": True})
             if size == "coder":  # the code-writing AI (code track)
                 threading.Thread(target=run_job, args=(["gameai.code.coder", "train", "--size", "small"], "coder"), daemon=True).start()
                 return self.send(200, {"ok": True})
