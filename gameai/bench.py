@@ -116,10 +116,11 @@ def main():
     gate = fresh["validity"] == 1.0 and fresh["instruction_match"] >= 0.99
 
     cur_path = "models/current.json"
-    old, why = None, ""
+    old, why, old_params = None, "", None
     if os.path.exists("models/current.pt"):
         try:
             cm, ctok, _ = load("models/current.pt", device)
+            old_params = cm.num_params()
             old = {}
             for i, (k, rows) in enumerate(sets.items()):
                 old[k], _ = score(cm, ctok, rows, device, i + 1); old[k]["n"] = len(rows)
@@ -133,7 +134,7 @@ def main():
         why = f"overall {gain*100:+.2f} points" + (f", but worse on: {', '.join(drops)}" if drops else "")
     promoted = gate and better
     result = {"checkpoint": a.checkpoint, "train_run": ck.get("run"), "fresh_seed": seed, **res,
-              "fresh": fresh, "total": total(res), "params": model.num_params(), "old_total": total(old) if old else None, "why": why,
+              "fresh": fresh, "total": total(res), "params": model.num_params(), "old": old, "old_params": old_params, "old_total": total(old) if old else None, "why": why,
               "gate_passed": gate, "promoted": promoted}
     if promoted:
         os.makedirs("models", exist_ok=True)

@@ -61,9 +61,23 @@ def main():
     print("=== Always-on learning stopped ===", flush=True)
 
 
+def failed(hist, rnd, step, teacher, fails):
+    """A step crashed (often: the GPU ran out of memory). Don't give up: note it, free the GPU, try again."""
+    msg = f"Round {rnd}: {step} didn't work"
+    if teacher and teacher.poll() is None and fails >= 1:
+        teacher.terminate(); msg += "; stopped the teacher to free the GPU's memory"
+    print(msg + ". Trying again in 30 seconds.", flush=True)
+    with open(hist, "a") as f:
+        f.write(json.dumps({"round": rnd, "time": time.time(), "failed": step, "note": msg}) + "\n")
+    time.sleep(30)
+
+
 def loop(rnd, hist, teacher):
-    warned = False
+    warned, fails = False, 0
     while not os.path.exists("learn/STOP"):
+        if fails >= 4:
+            print("Learning stopped: the same problem happened 4 times in a row. Send Claude the messages above.", flush=True)
+            break
         if teacher and teacher.poll() is not None and not warned:
             warned = True
             print("The teacher stopped (see learn/teacher.log); learning carries on without new examples.", flush=True)
@@ -71,21 +85,27 @@ def loop(rnd, hist, teacher):
         if n_teacher: print(f"Teacher examples so far: {n_teacher}", flush=True)
         print(f"=== Round {rnd}: new practice data ===", flush=True)
         if not run(["gameai.datagen", "--out", "data/round", "--train", str(PRACTICE), "--val", "1000", "--test", "10",
-                    "--seed", str(1000 + rnd)]): break
+                    "--seed", str(1000 + rnd)]):
+            fails += 1; failed(hist, rnd, "making practice data", teacher, fails); continue
         print(f"=== Round {rnd}: practice test ===", flush=True)
         practice = None
         if run(["gameai.improve", "--seed", str(5000 + rnd), "--pool", os.environ.get("GAMEAI_LEARN_POOL", "20000")]) and os.path.exists("learn/practice.json"):
             practice = json.load(open("learn/practice.json"))
         print(f"=== Round {rnd}: learning ===", flush=True)
         if not run(["gameai.train", "--init", "models/current.pt", "--data", "data/round", "--steps", str(STEPS),
-                    "--lr", "1e-3", "--muon-lr", "0.006", "--eval-every", "400", "--name", f"round{rnd}"]): break
+                    "--lr", "1e-3", "--muon-lr", "0.006", "--eval-every", "400", "--name", f"round{rnd}"]):
+            fails += 1; failed(hist, rnd, "training", teacher, fails); continue
         print(f"=== Round {rnd}: testing ===", flush=True)
-        if not run(["gameai.bench", "--fresh", "2000"]): break
+        if not run(["gameai.bench", "--fresh", "2000"]):
+            fails += 1; failed(hist, rnd, "testing", teacher, fails); continue
+        fails = 0
         last = json.loads(open("bench/history.jsonl").readlines()[-1])
-        best = json.load(open("models/current.json")) if os.path.exists("models/current.json") else last  # the AI in use now
-        row = {"round": rnd, "time": time.time(), "exact": best.get("total", best["frozen"]["exact"]), "typo": best["typo"]["exact"],
+        # the AI in use after this round, scored on THIS round's tests (bench scores both versions on the same tests)
+        best = last if last["promoted"] or not last.get("old") else last["old"]
+        row = {"round": rnd, "time": time.time(), "exact": last["total"] if last["promoted"] or last.get("old_total") is None else last["old_total"],
+               "typo": best["typo"]["exact"],
                "frozen": best["frozen"]["exact"], "gold": (best.get("gold") or {}).get("exact"), "version": best.get("version"),
-               "yours": (best.get("yours") or {}).get("exact"), "params": best.get("params"),
+               "yours": (best.get("yours") or {}).get("exact"), "params": last.get("params") if last["promoted"] else last.get("old_params", last.get("params")),
                "practice": practice and practice["practice_score"], "lessons": practice and practice["lessons"],
                "weakest": practice and practice["weakest"], "why": last.get("why"),
                "candidate": last.get("total", last["frozen"]["exact"]), "promoted": last["promoted"], "teacher": n_teacher}
