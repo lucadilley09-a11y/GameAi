@@ -231,3 +231,19 @@ reading them shows what to add to the data generator next.
 (`set GAMEAI_TRACKIO=1` on Windows) and run `trackio show --project gameai`.
 Everything stays on your computer.
 
+
+## Code checkers
+
+Every piece of code the AI writes is formatted, then checked, before it counts (plan: Phase 4). The autopilot
+installs them (about 65 MB, in `runtime\tools`); after that they work offline.
+
+- **Formatting first, never silent:** Prettier (JavaScript, TypeScript, HTML, CSS), ruff (Python), StyLua (Lua),
+  CSharpier (C#, added with the C# sandbox). Every change is shown as a diff.
+- **Then the checkers:** the TypeScript type checker (also for plain JavaScript, and it knows GameKit's types, so
+  `g.levle(...)` or `goal('colect')` is caught), ESLint, ruff, and a language server (hover, go to definition,
+  references, completions).
+- **No hiding problems:** `any`, `@ts-ignore`, `eslint-disable`, `# noqa`, `#pragma warning disable` and similar
+  fail unless they carry a reason of at least 3 words (after ` -- ` or `because`). Empty `catch` blocks and bare
+  `except: pass` are errors.
+
+By hand: `python -m gameai.checks validate game.js` (add `--write` to save the formatting).

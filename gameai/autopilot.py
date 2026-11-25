@@ -32,6 +32,7 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     ("fullstack", "testing the whole app at once", "when", ["gameai.phase0", "fullstack"]),
     ("profile", "timing training and game making", "when", ["gameai.phase0", "profile"]),
     ("independence", "checking everything works offline", "when", ["gameai.phase0", "independence"]),
+    ("checkers", "installing the code checkers (about 65 MB, a minute)", "when", ["gameai.checks", "install"]),
     ("general", "getting the everyday-conversation data", "general", ["gameai.autopilot", "run", "general"]),
     ("bakeoff", "testing the candidate AI models (hours)", "bakeoff", ["gameai.autopilot", "run", "bakeoff"]),
     ("choose", "choosing the best model", None, ["gameai.autopilot", "run", "choose"]),
