@@ -378,6 +378,17 @@ function teach(prompt,rec,quiet){
  if(!(API&&API.app))return;
  post('api/correct',{prompt,recipe:rec}).then(r=>{if(!quiet)say(r.ok?`Thanks, saved. Your AI learns from it in the next learning round${r.test?' (this one is kept aside to test it on)':''}.`:esc(r.error||'Could not save that.'),r.ok?'a':'w')});
 }
+async function codeResult(r,arg){
+
+    if(r.error){say(esc(r.error),'w');return}
+    const show=c=>`<pre style="margin:4px 0;padding:6px 10px;background:#181818;border:1px solid #3c3c3c;color:#9cdcfe;white-space:pre-wrap">${esc(c)}</pre>`;
+    if(!r.ok){say(`I couldn't write working code for that yet (${esc(r.reason)}). My best try:`+show(r.code),'w');say('Try simpler words, or something like: chase me, run away, circle around me, zigzag, walk left and right, stay 150 away, or "X when I get close, otherwise Y".','d');return}
+    if(r.confirm){window.__pendingCode=r;say(`I wrote working code, but I'm not sure it's what you meant (${esc(r.intent_why)}). My code makes the enemies ${esc(r.words)}:`+show(r.code),'w');say('Type /code yes to use it anyway, or say it differently.','d');return}
+    say(`Understood: the enemies ${esc(r.words)}${r.intent==='matches'?' (that matches your words)':''}. Here's the code I wrote (it passed the test on try ${r.tries}):`+show(r.code));
+    const R={...lastGame.r,code:r.code,codeWords:r.words};spin('Playtesting');let res;try{res=await bestLevel(R,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
+    R.seed=res.best.seed;if(res.best.balance)R.balance=res.best.balance;lastGame={...lastGame,r:R};build(R);const pl=playReport(res,R);say(esc(pl.text),'d');if(pl.probs.length)say('Heads-up: '+esc(pl.probs.join('; ')),'w');
+    showTab('game');rememberGame(lastGame);if(API&&API.app)post('api/playlog',{prompt:'/code '+arg,recipe:R,code:r.code,spec:r.spec,proven:res.best.proven}).catch(()=>{})
+}
 function showGame(on){document.body.classList.toggle('nogame',!on);store.set('gameai.nogame',!on)}
 function showTab(t){document.body.classList.remove('nogame');for(const [b,p] of [['tGame','pGame'],['tGraph','pGraph']]){const o=(t==='graph')===(b==='tGraph');$(b).classList.toggle('on',o);$(p).classList.toggle('on',o)}
  $('aGame').classList.toggle('on',t!=='graph');$('aGraph').classList.toggle('on',t==='graph');if(t==='graph')showLearning(lastStatusLine).then(ok=>{if(ok)$('prog').classList.add('on')})}
@@ -472,17 +483,11 @@ function command(line){
   case '/rollback':if(needApp())break;post('api/rollback',{n:+arg||null}).then(r=>say(r.ok?`Now using version ${r.version}. Learning continues from this one.`:esc(r.error),r.ok?'a':'w'));break;
   case '/sound':{const off=arg==='off'||(!arg&&localStorage.getItem('gameai.mute')!=='1');try{localStorage.setItem('gameai.mute',off?'1':'0')}catch(e){}say(off?'Sound off. /sound on brings it back.':'Sound on.','d');break}
   case '/code':{
+   if(arg==='yes'){const r=window.__pendingCode;if(!r){say('Nothing is waiting. Use /code <what the enemies should do>.','d');break}window.__pendingCode=null;r.confirm=false;r.intent='you said yes';codeResult(r,r.text||'(confirmed)');break}
    if(arg==='off'){if(lastGame&&lastGame.r.code){delete lastGame.r.code;delete lastGame.r.codeWords;build(lastGame.r);say('The enemies are back to normal.','d')}else say('No code in this game.','d');break}
    if(!arg){say('Tell your AI what the enemies should do, and it writes the code. For example: /code circle around me but run away when I get close. /code off removes it.','d');break}
    if(needApp())break;if(!lastGame){say('Make a game first, then give its enemies code.','w');break}
-   spin('Writing code');post('api/code',{text:arg}).then(async r=>{unspin();
-    if(r.error){say(esc(r.error),'w');return}
-    const show=c=>`<pre style="margin:4px 0;padding:6px 10px;background:#181818;border:1px solid #3c3c3c;color:#9cdcfe;white-space:pre-wrap">${esc(c)}</pre>`;
-    if(!r.ok){say(`I couldn't write working code for that yet (${esc(r.reason)}). My best try:`+show(r.code),'w');say('Try simpler words, or something like: chase me, run away, circle around me, zigzag, walk left and right, stay 150 away, or "X when I get close, otherwise Y".','d');return}
-    say(`Understood: the enemies ${esc(r.words)}. Here's the code I wrote (it passed the test on try ${r.tries}):`+show(r.code));
-    const R={...lastGame.r,code:r.code,codeWords:r.words};spin('Playtesting');let res;try{res=await bestLevel(R,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
-    R.seed=res.best.seed;if(res.best.balance)R.balance=res.best.balance;lastGame={...lastGame,r:R};build(R);const pl=playReport(res,R);say(esc(pl.text),'d');if(pl.probs.length)say('Heads-up: '+esc(pl.probs.join('; ')),'w');
-    showTab('game');rememberGame(lastGame);if(API&&API.app)post('api/playlog',{prompt:'/code '+arg,recipe:R,code:r.code,spec:r.spec,proven:res.best.proven}).catch(()=>{})}).catch(()=>{unspin();say('Could not reach the coder.','w')});break}
+   spin('Writing code');post('api/code',{text:arg}).then(r=>{unspin();return codeResult(r,arg)}).catch(()=>{unspin();say('Could not reach the coder.','w')});break}
   case '/upgrade':if(needApp())break;post('api/train',{size:'upgrade'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say('Teaching your AI the new parts of the game language. It keeps everything it already learned. About 5-10 minutes on your GPU.');watch()}});break;
   case '/questions':askOn=arg!=='off';store.set('gameai.ask',askOn);say(`Questions ${askOn?'on':'off'}.`);break;
   case '/load':$('files').click();say('Pick gameai-model.json (from the for-chromebook folder on your PC).','d');break;

@@ -88,13 +88,22 @@ def split_out(text):
 
 def write(model, tok, prompt, device, tries=16, temp=0.8):  # quality over speed: 16 tries
     """-> {"ok", "spec", "code", "tries", "reason"}: the first try that is safe and works"""
+    from . import intent
     t0, why = time.time(), "no tries"
     cands = sample(model, tok, [prompt], device, n=tries, temp=temp)[0]
+    working = []  # tries that are safe and do exactly what their spec says
     for i, c in enumerate(cands):
         sp, code = split_out(c)
         ok, why = sandbox.verify(sp, code, seed=i)
         if ok:
-            return {"ok": True, "spec": sp, "code": code, "tries": i + 1, "words": specs.describe(specs.parse(sp)), "ms": int((time.time() - t0) * 1000)}
+            agree, iwhy = intent.check(prompt, specs.parse(sp))  # independent check: is that spec what you asked for?
+            working.append((0 if agree else 1 if agree is None else 2, i, sp, code, iwhy))
+            if agree: break
+    if working:
+        rank, i, sp, code, iwhy = min(working)
+        return {"ok": True, "spec": sp, "code": code, "tries": i + 1, "words": specs.describe(specs.parse(sp)),
+                "intent": ["matches", "unsure", "differs"][rank], "intent_why": iwhy, "confirm": rank == 2,
+                "ms": int((time.time() - t0) * 1000)}
     sp, code = split_out(cands[0])
     return {"ok": False, "spec": sp, "code": code, "tries": len(cands), "reason": why, "ms": int((time.time() - t0) * 1000)}
 

@@ -51,13 +51,25 @@ def apply_zip(data, root=ROOT):
     z = zipfile.ZipFile(io.BytesIO(data))
     top = z.namelist()[0].split("/")[0] + "/"
     changed = []
+    if sum(i.file_size for i in z.infolist()) > 200 * 1024 * 1024:
+        raise ValueError("update refused: the download is far bigger than the program should be")
+    for name in z.namelist():  # check every path first, so a bad download changes nothing at all
+        rel = name[len(top):] if name.startswith(top) else name
+        if rel.startswith("/") or ".." in rel.split("/") or ":" in rel or "\\" in rel:
+            raise ValueError(f"update refused: unsafe file path in the download ({rel!r})")
     for name in z.namelist():
         if not name.startswith(top) or name.endswith("/"):
             continue
         rel = name[len(top):]
         if not rel or rel.split("/")[0] in KEEP or "__pycache__" in rel:
             continue
-        dest = os.path.join(root, *rel.split("/"))
+        parts = rel.split("/")
+        if any(x in ("", ".", "..") or ":" in x or "\\" in x for x in parts):
+            raise ValueError(f"update refused: unsafe file path in the download ({rel!r})")
+        dest = os.path.join(root, *parts)
+        real_root = os.path.realpath(root)
+        if os.path.commonpath([real_root, os.path.realpath(dest)]) != real_root:  # never write outside the project folder
+            raise ValueError(f"update refused: {rel!r} would be written outside the project")
         new = z.read(name)
         if os.path.exists(dest) and open(dest, "rb").read() == new:
             continue
