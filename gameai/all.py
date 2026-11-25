@@ -18,7 +18,12 @@ def main():
     ap.add_argument("--size", default="small")
     ap.add_argument("--steps", default=None, help="default depends on the size")
     a = ap.parse_args()
-    if not os.path.exists("data/manifest.json"):
+    from .recipe import GRAMMAR_VERSION
+    old = json.load(open("data/manifest.json")) if os.path.exists("data/manifest.json") else None
+    if old and old.get("grammar_version", 2) != GRAMMAR_VERSION:
+        print(f"1/4  The practice data is from an older game language (version {old.get('grammar_version', 2)}), so making new data")
+        old = None
+    if not old:
         step("1/4  Making training data", ["gameai.datagen"])
     else:
         print("1/4  Training data already exists, reusing it")

@@ -67,21 +67,30 @@ def run_job(args, kind="job"):
     p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
     STATE["proc"] = p
-    for line in p.stdout:
-        line = line.rstrip()
-        if line.startswith("@@P"):
-            d = json.loads(line[3:]); j.update(step=d["step"], total=d["total"], loss=d["loss"])
-        elif line.startswith("@@L"):
-            pass  # round results: the page reads learn/history.jsonl
-        elif line.startswith("@@E"):
-            j["evals"].append(json.loads(line[3:]))
-        else:
+    try:
+        for line in p.stdout:
+            line = line.rstrip()
+            try:
+                if line.startswith("@@P"):
+                    d = json.loads(line[3:]); j.update(step=d["step"], total=d["total"], loss=d["loss"])
+                    continue
+                if line.startswith("@@L"): continue  # round results: the page reads learn/history.jsonl
+                if line.startswith("@@E"):
+                    j["evals"] = (j["evals"] + [json.loads(line[3:])])[-200:]; continue
+            except (ValueError, KeyError):
+                pass  # a garbled progress line: show it as text instead of crashing
             if line.startswith("==="): j["stage"] = line.strip("= ")
             j["log"] = (j["log"] + [line])[-40:]
-    j["ok"] = p.wait() == 0
-    with STATE["lock"]:
-        load_model()
-    j["running"] = False
+        j["ok"] = p.wait() == 0
+    except Exception as e:  # whatever happens, the job must not stay "running" forever
+        j["log"] = (j["log"] + [f"The app lost track of the job: {e}"])[-40:]; j["ok"] = False
+        if p.poll() is None: p.kill()
+    finally:
+        try:
+            with STATE["lock"]:
+                load_model()
+        finally:
+            j["running"] = False
 
 
 def page():
@@ -114,6 +123,11 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/status":
             STATE["seen"] = time.time()  # the PC window or your Chromebook is using the app
             return self.send(200, status())
+        if path == "/api/model" and "meta=1" in self.path:  # just the list of settings (a few KB): decoding runs on the PC
+            if not STATE["model"]: return self.send(409, {"error": "no model yet"})
+            from .export_web import export_model
+            m, _ = export_model(weights=False)
+            return self.send(200, m)
         if path == "/api/model":
             if not STATE["model"]: return self.send(409, {"error": "no model yet"})
             from .export_web import single_file

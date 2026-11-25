@@ -124,12 +124,21 @@ def main():
     cur_path = "models/current.json"
     old, why, old_params = None, "", None
     if os.path.exists("models/current.pt"):
+        import hashlib
+        sig = hashlib.sha1(json.dumps([os.path.getmtime("models/current.pt"), os.path.getsize("models/current.pt")] +
+                                      [[k, len(r), r[0]["prompt"], r[-1]["prompt"]] for k, r in sets.items()]).encode()).hexdigest()
+        cache = "bench/current_scores.json"
         try:
-            cm, ctok, _ = load("models/current.pt", device)
-            old_params = cm.num_params()
-            old = {}
-            for i, (k, rows) in enumerate(sets.items()):
-                old[k], _ = score(cm, ctok, rows, device, i + 1); old[k]["n"] = len(rows)
+            c = json.load(open(cache)) if os.path.exists(cache) else {}
+            if c.get("sig") == sig:  # the AI in use and the tests haven't changed: reuse its scores (saves half the test time)
+                old, old_params = c["old"], c["params"]
+            else:
+                cm, ctok, _ = load("models/current.pt", device)
+                old_params = cm.num_params()
+                old = {}
+                for i, (k, rows) in enumerate(sets.items()):
+                    old[k], _ = score(cm, ctok, rows, device, i + 1); old[k]["n"] = len(rows)
+                os.makedirs("bench", exist_ok=True); json.dump({"sig": sig, "old": old, "params": old_params}, open(cache, "w"))
         except ValueError:
             old = None  # the current AI is from an older game language: any passing new one replaces it
     if old is None:

@@ -229,7 +229,8 @@ def main():
     for name, rows in sets.items():
         write(os.path.join(a.out, f"{name}.jsonl"), rows)
         h.update(json.dumps(rows).encode())
-    manifest = {k: len(v) for k, v in sets.items()} | {"seed": a.seed, "sha256": h.hexdigest()[:16]}
+    from .recipe import GRAMMAR_VERSION
+    manifest = {k: len(v) for k, v in sets.items()} | {"seed": a.seed, "sha256": h.hexdigest()[:16], "grammar_version": GRAMMAR_VERSION}
     json.dump(manifest, open(os.path.join(a.out, "manifest.json"), "w"), indent=2)
     print("wrote", manifest)
 

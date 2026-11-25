@@ -15,14 +15,14 @@ from .datagen import SYN
 HERE = os.path.dirname(__file__)
 
 
-def export_model(checkpoint="models/current.pt", compact=True):
+def export_model(checkpoint="models/current.pt", compact=True, weights=True):
     """-> (manifest dict, raw bytes) for the JavaScript model.
     compact: big weight tables are stored as 1 byte per number plus one scale per row ("q8"), about 4x smaller;
     the browser turns them back into normal numbers when it loads them. Small tensors stay exact."""
     model, tok, ck = load(checkpoint, "cpu")
     tensors, f32, i8 = [], [], []
     n32 = n8 = 0
-    for name, t in model.state_dict().items():
+    for name, t in (model.state_dict().items() if weights else []):
         a = t.float().numpy()
         if compact and a.ndim == 2 and a.size >= 4096:
             scale = np.maximum(np.abs(a).max(1), 1e-12) / 127.0

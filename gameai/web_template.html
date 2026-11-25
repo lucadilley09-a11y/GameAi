@@ -142,6 +142,12 @@ function useAI(ai,where){setTimeout(()=>sideAI(API&&API.app?API:null));
  AI=ai;FN=ai.fields;F=Object.fromEntries(FN.map((f,i)=>[f,Object.fromEntries(ai.options[i].filter(v=>v!=='auto').map(v=>[v,1]))]));trained=true;
  say(`Ready. Describe a game you want, like "a ninja in a spooky dungeon". Type /help for more.`,'a');lastWhere=where;
 }
+function remoteAI(m){ // the AI's settings list only; every request is decoded by your PC (its GPU), so no 50 MB download
+ const tk=m.tokenizer,rf=tk.recipe_fields||tk.field_names;
+ return {params:m.params,config:m.config,synonyms:m.synonyms,fields:rf,allFields:tk.field_names,remote:true,
+  options:rf.map(f=>{const s=tk.field_names.indexOf(f);return tk.field_ids[s].map(i=>tk.itos[i].split('=')[1])}),
+  decode:async p=>{const r=await fetch('api/decode',{method:'POST',body:JSON.stringify({prompt:p})});if(!r.ok)throw new Error('decode failed');return r.json()}};
+}
 const b64buf=b=>{const s=atob(b),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u.buffer};
 const idb=(mode,fn)=>new Promise((res,rej)=>{try{const r=indexedDB.open('gameai',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');
  r.onsuccess=()=>{const t=r.result.transaction('kv',mode),q=fn(t.objectStore('kv'));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)};r.onerror=()=>rej(r.error)}catch(e){rej(e)}});
@@ -151,7 +157,7 @@ async function boot(){
  API=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
  if(API&&API.app){
   const remote=!/^(127\.0\.0\.1|localhost)$/.test(location.hostname);$('mode').textContent=(remote?'Connected to your PC · ':'PC app · ')+(API.gpu||'CPU');
-  if(API.loaded){const ai=await fetch('api/model').then(r=>r.json()).catch(()=>null);if(ai)useAI(createAI(ai,b64buf(ai.b64)),'your trained AI, running on '+(API.gpu?'the GPU':'the CPU'))}
+  if(API.loaded){const ai=await fetch('api/model?meta=1').then(r=>r.json()).catch(()=>null);if(ai)useAI(remoteAI(ai),'your trained AI, running on '+(API.gpu?'the GPU':'the CPU'))}
   else say(API.note?'The game language got bigger (enemy behaviours, doors, levels, bosses, timers), so your AI needs one retrain to learn it. Type /train base for the bigger, smarter AI (about 30-60 minutes on your GPU), or /train for the usual size. Until then it can\'t make games.':'No trained AI yet. Type /train to train one (about 10-30 minutes on your GPU).','w');
   if(API.fresh)say(`Right now it gets about ${Math.floor(API.fresh.exact*1000)/10}% of game ideas exactly right.`,'d');
   if(!window.__ver){window.__ver=API.version;setInterval(async()=>{const st=await fetch('api/status').then(r=>r.ok?r.json():null).catch(()=>null);
@@ -159,7 +165,9 @@ async function boot(){
    if(!st){window.__miss=(window.__miss||0)+1;if(window.__miss===4&&!/^(127\.0\.0\.1|localhost)$/.test(location.hostname))say('Lost the connection to your PC. If it turned off, open GameAI.html to keep playing offline.','w');return}window.__miss=0;
    if(st&&st.updating&&!window.__upd){window.__upd=1;say(`Installing an update: ${esc(st.updating)}. Back in a few seconds…`,'a')}
    if(st&&st.update_waiting&&!window.__wait){window.__wait=1;say(st.training&&st.learning?'An update is ready. Learning pauses after this round, installs it, and carries on by itself.':'An update is ready. It installs by itself when the current training finishes.','d')}
-   if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}},5000)}
+   if(st&&st.version&&st.version!==window.__ver){window.__ver=st.version;const playing=()=>S&&S.state==='play'&&Date.now()-(window.__lastKey||0)<20000;
+    if(playing()){say(`Updated: ${esc(st.update_msg||'new version')}. It reloads when you finish this game.`,'a');const w=setInterval(()=>{if(!playing()){clearInterval(w);location.reload()}},1000)}
+    else{say(`Updated: ${esc(st.update_msg||'new version')}. Reloading…`,'a');setTimeout(()=>location.reload(),1500)}}},5000)}
   if(API.update_msg&&API.version!=='dev')say(`Version ${esc(API.version)}: ${esc(API.update_msg)}`,'d');
   sideAI(API);sideLearn(API);
   if(API.training)watch();else showLearning('').then(ok=>{if(ok)$('prog').classList.add('on')});
@@ -487,7 +495,8 @@ $('files').addEventListener('change',async e=>{await loadFiles([...e.target.file
 addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('drag')});
 addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('drag')});
 addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('drag');loadFiles([...e.dataTransfer.files])});
-inp.addEventListener('keydown',e=>{
+inp.addEventListener('keydown',()=>{window.__lastKey=Date.now()},true);
+addEventListener('keydown',e=>{
  if(menu&&!inp.value&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();const b=[...menu.children],i=b.findIndex(x=>x.classList.contains('sel')),n=(i+(e.key==='ArrowDown'?1:b.length-1))%b.length;b.forEach(x=>x.classList.remove('sel'));b[n].classList.add('sel');b[n].scrollIntoView({block:'nearest'});return}
  if(e.key==='Enter'){const v=inp.value;inp.value='';if(menu&&!v.trim()){const sel=menu.querySelector('.sel');command(sel?sel.dataset.v:'');return}if(v.trim()||pending)command(v.trim())}});
 addEventListener('keydown',e=>{if(e.target===inp)return;keys[e.code]=true;

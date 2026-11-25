@@ -44,13 +44,14 @@ class GpuData:
     def __init__(self, pairs, tok, device):
         L = max(len(p) for p, _ in pairs)
         self.lens = torch.tensor([len(p) for p, _ in pairs], device=device)
-        self.X = torch.tensor([[tok.pad] * (L - len(p)) + p for p, _ in pairs], device=device)
-        self.R = torch.tensor([r for _, r in pairs], device=device)
+        small = torch.int16 if tok.vocab_size < 32000 else torch.int32  # 2 bytes per symbol instead of 8: 4x less GPU memory
+        self.X = torch.tensor([[tok.pad] * (L - len(p)) + p for p, _ in pairs], dtype=small, device=device)
+        self.R = torch.tensor([r for _, r in pairs], dtype=small, device=device)
         self.L, self.n = L, len(pairs)
 
     def batch(self, idx):
         P = int(self.lens[idx].max())
-        seq = torch.cat([self.X[idx, self.L - P:], self.R[idx]], 1)
+        seq = torch.cat([self.X[idx, self.L - P:], self.R[idx]], 1).long()
         return seq[:, :-1], seq[:, 1:], P
 
 
