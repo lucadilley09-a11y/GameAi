@@ -13,6 +13,7 @@ solution goes through the same verifier as the AI's own.
 Candidates (permissive licences only; the licence is checked again before downloading):
     qwen2.5-coder-7b   a coding specialist, about 4.7 GB compressed
     qwen3.5-9b         a newer general model, strong at code for its size, about 5.5 GB compressed
+    (if converting is needed and there isn't room for it, that candidate is skipped, never your other files)
     qwen3.5-4b         the current learning teacher, about 2.7 GB compressed
 """
 import glob, json, os, random, re, shutil, time
@@ -24,10 +25,10 @@ from .prompts import text_of_reply as _text
 DIR = os.path.join("models", "teachers", "coding")
 RESULT = os.path.join(T.DIR, "teacher.json")
 FAR_AHEAD = 0.10   # the AI itself beats every candidate by this much: no teacher
-CANDIDATES = [
-    {"key": "qwen2.5-coder-7b", "gguf_repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", "gguf": "*q4_k_m*.gguf"},
-    {"key": "qwen3.5-9b", "hf_repo": "Qwen/Qwen3.5-9B"},
-    {"key": "qwen3.5-4b", "hf_repo": "Qwen/Qwen3.5-4B"},
+CANDIDATES = [  # a ready-compressed copy is used when one exists (saves converting, which briefly needs ~40 GB for the 9B)
+    {"key": "qwen2.5-coder-7b", "gguf_repos": ["Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"], "gguf": "*q4_k_m*.gguf"},
+    {"key": "qwen3.5-9b", "gguf_repos": ["Qwen/Qwen3.5-9B-GGUF", "unsloth/Qwen3.5-9B-GGUF"], "gguf": "*q4_k_m*.gguf", "hf_repo": "Qwen/Qwen3.5-9B"},
+    {"key": "qwen3.5-4b", "gguf_repos": ["Qwen/Qwen3.5-4B-GGUF", "unsloth/Qwen3.5-4B-GGUF"], "gguf": "*q4_k_m*.gguf", "hf_repo": "Qwen/Qwen3.5-4B"},
 ]
 
 
@@ -44,19 +45,22 @@ def fetch(c, log=print):
     dest = os.path.join(DIR, c["key"])
     have = sorted(glob.glob(os.path.join(dest, "*.gguf")))
     if have: return have[0]
-    repo = c.get("gguf_repo") or c["hf_repo"]
-    rec = _licence(repo)
-    if not rec.get("allowed"): raise RuntimeError(f"{c['key']}: {rec.get('why_not')}")
     from huggingface_hub import snapshot_download, HfApi
-    if c.get("gguf_repo"):
+    import fnmatch
+    for repo in c.get("gguf_repos", []):  # a ready-compressed copy, if one exists with an allowed licence
+        rec = _licence(repo)
+        if not rec.get("allowed"): continue
         files = [s.rfilename for s in HfApi().model_info(repo, revision=rec["revision"]).siblings]
-        import fnmatch
         pick = sorted(f for f in files if fnmatch.fnmatch(f.lower(), c["gguf"]))
-        if not pick: raise RuntimeError(f"{c['key']}: no compressed file matching {c['gguf']}")
-        need_space(7, c["key"])
-        log(f"  downloading {c['key']} ({len(pick)} file(s))...")
+        if not pick: continue
+        need_space(8, c["key"])
+        log(f"  downloading {c['key']} from {repo} ({len(pick)} file(s))...")
         snapshot_download(repo, revision=rec["revision"], local_dir=dest, allow_patterns=pick + ["LICENSE*"])
+        json.dump(rec, open(os.path.join(dest, "provenance.json"), "w"), indent=1)
         return sorted(glob.glob(os.path.join(dest, "**", "*.gguf"), recursive=True))[0]
+    if not c.get("hf_repo"): raise RuntimeError(f"{c['key']}: no compressed copy with an allowed licence was found")
+    rec = _licence(c["hf_repo"])
+    if not rec.get("allowed"): raise RuntimeError(f"{c['key']}: {rec.get('why_not')}")
     # Hugging Face weights -> 16-bit GGUF -> 4-bit; the big intermediate files are deleted
     need_space(rec.get("download_gb", 10) * 2.2 + 6, c["key"])
     from ..phase0.candidates import download

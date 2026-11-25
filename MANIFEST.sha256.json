@@ -30,7 +30,7 @@
 "gameai/coding/seed_tasks.py": "96d406ecbe97ed5335c9ca8dd930cb696a9db1a3287de73bbfcecbb812850361",
 "gameai/coding/selfteach.py": "dd0cfed4882f072c880814430d305a987fe08e4e6e0b46ac172846fb28453850",
 "gameai/coding/tasks.py": "21beefe6830a69f1643a82155784a12b5465d18c499ff39eb0425ebb5669d768",
-"gameai/coding/teacher.py": "c36ee5aa00f145385db1ac33d89fb77bed1d1518f879c46f886ef8410cb95278",
+"gameai/coding/teacher.py": "3da51f0337b94386b8d8364809183a17d874e5c6103c6da7bd8f0c213cb42937",
 "gameai/coding/verify.py": "858ec7462585c8b1bd368018ca5a28aeae029c2728d22595c3b547621c5d7424",
 "gameai/datagen.py": "d455e8e2984a9133b41d7ae09a6be02d6d114880100a8f3d2c9667e48b367ae2",
 "gameai/diagnose.py": "84c46a770b2b71bfb66d69624f510a5c391e5d581273180482a29fc2297dce39",
