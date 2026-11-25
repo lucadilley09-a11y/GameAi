@@ -30,8 +30,7 @@ def main():
     t("find gives the definition", repomap.find(m, "clamp")[0]["signature"] == "function clamp(v, lo, hi)")
     kit = repomap.build({"gamekit.d.ts": open(os.path.join(os.path.dirname(debugger.KIT), "gamekit.d.ts"), encoding="utf-8").read()})
     t("map reads GameKit's types (Game.spawn)", repomap.find(kit, "spawn") and "spawn(kind" in repomap.find(kit, "spawn")[0]["signature"])
-    t("Python, Lua and C# are mapped", {s["name"] for f in repomap.build({"a.py": "class A:\n    def go(self, n):\n        pass\n", "m.lua": "function M.spawn(x) end\n",
-        "G.cs": "public class E { public void Hit(int d) {} }\n"}).values() for s in f["symbols"]} >= {"A", "A.go", "M.spawn", "E", "E.Hit"})
+    t("Python and Lua are mapped", {s["name"] for f in repomap.build({"a.py": "class A:\n    def go(self, n):\n        pass\n", "m.lua": "function M.spawn(x) end\n"}).values() for s in f["symbols"]} >= {"A", "A.go", "M.spawn"})
     # ---- edits
     new, done = E.apply(GAME, [{"file": "src/player.js", "search": "this.speed = 3;", "replace": "this.speed = 4;"}])
     t("search edit applies", "this.speed = 4;" in new["src/player.js"] and GAME["src/player.js"] != new["src/player.js"])
@@ -61,6 +60,42 @@ def main():
     t("debugger: an endless loop times out with a clear message", r.get("timed_out") and "endless loop" in debugger.report(r), r)
     r = debugger.run({"a.js": "console.error('texture missing', 3);\nfunction g(){ throw new Error('boom') }\n", "a.test.js": "test('g', () => g());\n"})
     t("debugger: console errors are structured", r["console"] and r["console"][0]["file"] == "a.js" and r["console"][0]["line"] == 1, r.get("console"))
+    # ---- sandboxes: the project's code can't reach this PC
+    esc = {"a.test.js": "\n".join([
+        "test('no process', () => expect(typeof process).toBe('undefined'));",
+        "test('no require', () => expect(typeof require).toBe('undefined'));",
+        "test('no fetch', () => expect(typeof fetch).toBe('undefined'));",
+        "test('bridge leaks nothing', () => expect(__host.constructor('return typeof process')()).toBe('undefined'));",
+        "test('console leaks nothing', () => expect(console.error.constructor('return typeof process')()).toBe('undefined'));"]) + "\n",
+           "b.test.mjs": "import fs from 'node:fs';\ntest('never runs', () => {});\n"}
+    r = debugger.run(esc)
+    t("JavaScript sandbox: no process, require, fetch or way out through the bridge", r["passed"] == 5, debugger.report(r))
+    t("JavaScript sandbox: importing Node modules is refused", any("aren't allowed in the sandbox" in e["error"] for e in r["load_errors"]), r["load_errors"])
+    r = debugger.run({"a.test.js": "test('grows', () => { const a = []; while (true) a.push(new Array(1e6).fill(1)); });\n"}, timeout=60)
+    t("JavaScript sandbox: memory is capped", r["failed"] and "MB of memory" in debugger.report(r) or "longer than" in debugger.report(r), debugger.report(r))
+    py = {"score.py": "def score(coins, bonus=None):\n    base = coins * 10\n    return base * bonus['factor']\n",
+          "test_score.py": "from score import score\n\ndef test_bonus():\n    total = score(4, {'factor': 2})\n    assert total == 81\n\n"
+                           "def test_none():\n    score(3)\n\ndef test_ok():\n    assert score(1, {'factor': 1}) == 10\n\n"
+                           "def test_read():\n    open('/etc/hosts' if __import__('os').name != 'nt' else 'C:/Windows/win.ini').read()\n\n"
+                           "def test_write():\n    open('x.txt', 'w').write('hi')\n\ndef test_net():\n    import socket\n\n"
+                           "def test_prog():\n    import os; os.system('echo hi')\n\ndef test_mem():\n    x = [0] * (10**9)\n"}
+    r = debugger.run(py); rep = debugger.report(r, max_failures=10)
+    t("Python: both sides of a failed assert and the variable values", "expected: 81" in rep and "actual:   80" in rep and "bonus = None" in rep, rep)
+    errs = {x["name"]: x.get("error", "") for x in r["tests"]}
+    t("Python sandbox: no outside files, writing, network or programs", all(k in errs[n] for n, k in [("test_read", "only allows reading"),
+      ("test_write", "doesn't allow writing"), ("test_net", "isn't allowed"), ("test_prog", "doesn't allow os.system")]) and r["passed"] == 1, errs)
+    t("Python sandbox: memory is capped", "MemoryError" in errs.get("test_mem", "") or "MB of memory" in errs.get("test_mem", ""), errs.get("test_mem"))
+    lua = {"util.lua": "local M = {}\nfunction M.score(coins, bonus)\n  local base = coins * 10\n  return base * bonus.factor\nend\nreturn M\n",
+           "util_test.lua": "local util = require('util')\ntest('bonus', function() local total = util.score(4, {factor = 2}); expect(total).toBe(81) end)\n"
+                            "test('none', function() util.score(3) end)\ntest('ok', function() expect(util.score(1, {factor = 1})).toBe(10) end)\n"
+                            "test('io', function() io.open('x') end)\ntest('os', function() os.execute('echo') end)\n"
+                            "test('load', function() load('return 1')() end)\ntest('loop', function() while true do end end)\n"
+                            "test('mem', function() local s = 'x' while true do s = s .. s end end)\n"}
+    r = debugger.run(lua, timeout=60); rep = debugger.report(r, max_failures=10)
+    t("Lua: expected vs actual, variable values, the module's line", "expected: 81" in rep and "bonus = nil" in rep and "util.lua:4" in rep, rep)
+    errs = {x["name"]: x.get("error", "") for x in r["tests"]}
+    t("Lua sandbox: no io, os.execute or load; endless loops and memory are stopped", "global 'io'" in errs["io"] and "'execute'" in errs["os"]
+      and "global 'load'" in errs["load"] and "endless loop" in errs["loop"] and "memory" in errs["mem"].lower() and r["passed"] == 1, errs)
     # ---- atomic changes
     d = tempfile.mkdtemp(); write(d, GAME)
     before = {p: open(os.path.join(d, *p.split("/")), encoding="utf-8").read() for p in GAME}

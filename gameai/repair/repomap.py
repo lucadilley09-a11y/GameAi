@@ -1,5 +1,5 @@
 """Repository map (plan: Phase 4): a Tree-sitter index of a project's file paths, imports, exports, classes, functions,
-types and their signatures, so the AI sees what already exists before it writes code that uses it. This means fewer
+types and their signatures (JavaScript/TypeScript, Python, Lua), so the AI sees what already exists before it writes code that uses it. This means fewer
 invented functions and fewer wrong imports.
 
 The map is compact (signatures only, no bodies) but not cut to a fixed size: every file and every top-level name is
@@ -14,7 +14,7 @@ import os, re
 
 LANGS = {".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascript",
          ".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "tsx",
-         ".py": "python", ".lua": "lua", ".cs": "c_sharp"}
+         ".py": "python", ".lua": "lua"}
 SKIP_DIRS = {"node_modules", ".git", "__pycache__", ".history", ".staging", "dist", "build", "bin", "obj"}
 _parsers = {}
 
@@ -28,7 +28,6 @@ def parser(lang):
         elif lang == "tsx": import tree_sitter_typescript as m; L = m.language_tsx()
         elif lang == "python": import tree_sitter_python as m; L = m.language()
         elif lang == "lua": import tree_sitter_lua as m; L = m.language()
-        elif lang == "c_sharp": import tree_sitter_c_sharp as m; L = m.language()
         else: raise ValueError(lang)
         _parsers[lang] = ts.Parser(ts.Language(L))
     return _parsers[lang]
@@ -185,35 +184,6 @@ def _lua(root, src, out):
     out["exports"] = [s["name"] for s in out["symbols"] if s["exported"]]
 
 
-CS_TYPES = {"class_declaration", "struct_declaration", "interface_declaration", "enum_declaration", "record_declaration"}
-CS_MEMBERS = {"method_declaration", "constructor_declaration", "property_declaration", "field_declaration"}
-
-
-def _cs(root, src, out):
-    def add(kind, name, sig, node, public):
-        out["symbols"].append({"kind": kind, "name": name, "signature": sig, "line": node.start_point[0] + 1,
-                               "end_line": node.end_point[0] + 1, "exported": public})
-
-    def visit(n, owner=None):
-        if n.type in ("namespace_declaration", "file_scoped_namespace_declaration", "declaration_list", "compilation_unit"):
-            for c in n.children: visit(c, owner)
-        elif n.type == "using_directive":
-            out["imports"].append(re.sub(r"^using\s+|;$", "", _text(n, src)).strip())
-        elif n.type in CS_TYPES:
-            name = _name(n, src); add("class" if n.type != "interface_declaration" else "type", name, _sig(n, src), n, "public" in _sig(n, src))
-            body = n.child_by_field_name("body")
-            for c in (body.children if body is not None else []): visit(c, name)
-        elif n.type in CS_MEMBERS and owner:
-            name = _name(n, src)
-            if name is None:  # fields: the name is inside the variable declarator
-                m = re.search(r"(\w+)\s*(?:=|;)", _text(n, src)); name = m.group(1) if m else "?"
-            sig = _sig(n, src) if n.type != "field_declaration" else re.sub(r"\s+", " ", _text(n, src))[:120]
-            add("method" if "method" in n.type or "constructor" in n.type else "field", f"{owner}.{name}", sig, n, "public" in sig)
-
-    visit(root)
-    out["exports"] = [s["name"] for s in out["symbols"] if s["exported"] and "." not in s["name"]]
-
-
 def index_file(path, text):
     lang = lang_of(path)
     out = {"path": path, "lang": lang, "lines": text.count("\n") + 1, "imports": [], "exports": [], "symbols": [], "parse_errors": 0}
@@ -221,7 +191,7 @@ def index_file(path, text):
     src = text.encode("utf-8")
     tree = parser(lang).parse(src)
     out["parse_errors"] = sum(1 for _ in _errors(tree.root_node))
-    {"javascript": _js, "typescript": _js, "tsx": _js, "python": _py, "lua": _lua, "c_sharp": _cs}[lang](tree.root_node, src, out)
+    {"javascript": _js, "typescript": _js, "tsx": _js, "python": _py, "lua": _lua}[lang](tree.root_node, src, out)
     out["symbols"] = [s for s in out["symbols"] if s["name"]]
     out["exports"] = sorted(set(e for e in out["exports"] if e))
     return out

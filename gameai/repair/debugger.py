@@ -1,4 +1,7 @@
-"""The debugger tool (plan: Phase 4): runs a project's tests and says why one failed, most useful facts first:
+"""The debugger tool (plan: Phase 4). The tests run in a sandbox: the project's code gets no files, network, programs
+or Node modules, at most 512 MB of memory and 10 seconds per test.
+
+It runs a project's tests and says why one failed, most useful facts first:
 the error, the stack trace in the project's own files (with each source line), the failing assertion (expected vs
 actual), the variable values where it went wrong, and console errors. Full game state only when asked (inspect=True).
 
@@ -6,22 +9,38 @@ actual), the variable values where it went wrong, and console errors. Full game 
     r = debugger.run("my_game")                    # or a {path: text} dict
     print(debugger.report(r))                      # plain text for a repair prompt (and for you)
 
-Tests are JavaScript files named *.test.js (or in a tests/ folder) using test(name, fn), expect(x).toBe(y) and
-friends, or assert(cond, msg). Other .js files are loaded first (alphabetically, main/index last), with GameKit.
-A test can set globalThis.__game = g so a failure shows the game's state.
+Each language runs in its own sandbox (no files outside the project, no writing, no network, no programs):
+    JavaScript  *.test.js or tests/*.js: test(name, fn), expect(x).toBe(y)..., assert(cond, msg). Other .js files load
+                first (alphabetically, main/index last), with GameKit. Set globalThis.__game = g to see the game's state.
+    Python      test_*.py, *_test.py or tests/*.py: functions named test_*, plain assert (both sides are shown)
+    Lua         *_test.lua or tests/*.lua: test("name", function() expect(x).toBe(y) end), assert(cond, msg)
 """
-import json, os, shutil, subprocess, tempfile, time
+import json, os, shutil, subprocess, sys, tempfile, time
 
 from ..checks import tools
 
-RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_runner.mjs")
+HERE = os.path.dirname(os.path.abspath(__file__))
+RUNNER = os.path.join(HERE, "debug_runner.mjs")
+PY_RUNNER = os.path.join(HERE, "py_runner.py")
+LUA_RUNNER = os.path.join(HERE, "lua_runner.py")
 KIT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "kit", "gamekit.js")
 JS = (".js", ".mjs", ".cjs")
+MEMORY_MB = 512          # the most memory the tests may use
+TEST_SECONDS = 10        # the longest one test may run
+
+
+def lang_of_test(path):
+    """'js' | 'py' | 'lua' if this file is a test file, else None"""
+    p = path.replace("\\", "/"); base = os.path.basename(p)
+    in_tests = "/tests/" in "/" + p
+    if p.endswith(JS): return "js" if base.endswith((".test.js", ".test.mjs", ".spec.js")) or in_tests else None
+    if p.endswith(".py"): return "py" if base.startswith("test_") or base.endswith("_test.py") or (in_tests and base != "__init__.py") else None
+    if p.endswith(".lua"): return "lua" if base.endswith(("_test.lua", ".test.lua")) or in_tests else None
+    return None
 
 
 def is_test(path):
-    p = path.replace("\\", "/")
-    return p.endswith((".test.js", ".test.mjs", ".spec.js")) or "/tests/" in "/" + p or p.startswith("tests/")
+    return lang_of_test(path) is not None
 
 
 def _order(scripts):
@@ -29,10 +48,59 @@ def _order(scripts):
     return sorted(scripts, key=lambda p: (last(p), p))
 
 
+def _sandbox(cmd, cfg, root, timeout, env):
+    """run one language's runner with a time limit and a memory limit (watched from outside, so it works on Windows too)"""
+    import psutil
+    fd, cfg_path = tempfile.mkstemp(suffix=".json"); os.close(fd)
+    json.dump(cfg, open(cfg_path, "w"))
+    t0, killed = time.time(), None
+    p = subprocess.Popen(cmd + [cfg_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                         env=env, cwd=root, creationflags=tools.NO_WINDOW)
+    try:
+        import threading
+        res = {}
+        th = threading.Thread(target=lambda: res.update(zip(("out", "err"), p.communicate())), daemon=True); th.start()
+        proc = psutil.Process(p.pid)
+        while th.is_alive():
+            th.join(0.2)
+            if not th.is_alive(): break
+            try: rss = proc.memory_info().rss
+            except psutil.Error: rss = 0
+            if rss > (MEMORY_MB + 200) * 2**20: killed = f"used more than {MEMORY_MB} MB of memory"; p.kill()
+            elif time.time() - t0 > timeout: killed = f"timed out after {timeout}s: probably an endless loop"; p.kill()
+        th.join(5)
+    finally:
+        os.remove(cfg_path)
+    out, err = res.get("out") or "", res.get("err") or ""
+    if killed:
+        ran = [l[9:] for l in err.splitlines() if l.startswith("running: ")]
+        return {"passed": max(0, len(ran) - 1), "failed": 1, "timed_out": "timed out" in killed, "load_errors": [], "console": [],
+                "tests": [{"name": ran[-1] if ran else "(loading the project)", "passed": False, "error": killed}]}
+    try: r = json.loads(out)
+    except ValueError:
+        if "heap limit" in err or "out of memory" in err.lower() or "MemoryError" in err:
+            return {"passed": 0, "failed": 1, "load_errors": [], "console": [], "tests": [{"name": "(memory)", "passed": False,
+                    "error": f"used more than {MEMORY_MB} MB of memory"}]}
+        return {"passed": 0, "failed": 1, "load_errors": [], "console": [], "tests": [{"name": "(runner)", "passed": False,
+                "error": (err or out or "the test runner stopped").strip()[-600:]}]}
+    r["seconds"] = round(time.time() - t0, 2)
+    return r
+
+
+def _merge(results):
+    out = {"passed": 0, "failed": 0, "tests": [], "load_errors": [], "console": [], "timed_out": False, "seconds": 0}
+    for lang, r in results:
+        for t in r.get("tests", []): t["lang"] = lang
+        for k in ("passed", "failed", "seconds"): out[k] += r.get(k, 0)
+        for k in ("tests", "load_errors", "console"): out[k] += r.get(k, [])
+        out["timed_out"] = out["timed_out"] or bool(r.get("timed_out"))
+    out["seconds"] = round(out["seconds"], 2)
+    return out
+
+
 def run(project, tests=None, inspect=False, timeout=30, kit=True):
-    """project: a folder or {path: text}. -> {passed, failed, tests: [...], load_errors, console, timed_out}"""
-    node = tools.node()
-    if not node: raise RuntimeError("the debugger needs Node.js: run  python -m gameai.checks install")
+    """project: a folder or {path: text}. Runs the JavaScript, Python and Lua tests it has, each in its sandbox.
+    -> {passed, failed, tests: [...], load_errors, console, timed_out}"""
     tmp = None
     if isinstance(project, dict):
         tmp = tempfile.mkdtemp(prefix="gameai-debug-")
@@ -45,29 +113,25 @@ def run(project, tests=None, inspect=False, timeout=30, kit=True):
         from .repomap import read_dir
         names = list(read_dir(project))
     try:
-        js = [n for n in names if n.endswith(JS)]
-        tests = tests if tests is not None else sorted(n for n in js if is_test(n))
-        scripts = _order([n for n in js if n not in tests])
-        cfg = {"root": os.path.abspath(root), "scripts": scripts, "tests": tests, "inspect": inspect, "kit": KIT if kit else None}
-        fd, cfg_path = tempfile.mkstemp(suffix=".json"); os.close(fd)
-        json.dump(cfg, open(cfg_path, "w"))
-        t0 = time.time()
-        try:
-            p = subprocess.run([node, RUNNER, cfg_path], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               timeout=timeout, creationflags=tools.NO_WINDOW)
-        except subprocess.TimeoutExpired as e:
-            ran = [l[5:] for l in (e.stderr or b"").decode("utf-8", "replace").splitlines() if l.startswith("ran: ")]
-            return {"passed": len(ran), "failed": 1, "timed_out": True, "load_errors": [], "console": [],
-                    "tests": [{"name": "(the test after " + (repr(ran[-1]) if ran else "loading") + ")", "passed": False,
-                               "error": f"timed out after {timeout}s: probably an endless loop"}]}
-        finally:
-            os.remove(cfg_path)
-        try: r = json.loads(p.stdout)
-        except ValueError:
-            return {"passed": 0, "failed": 1, "load_errors": [], "console": [], "tests": [{"name": "(runner)", "passed": False,
-                    "error": (p.stderr or p.stdout or "the test runner stopped").strip()[-600:]}]}
-        r["seconds"] = round(time.time() - t0, 2)
-        return r
+        tests = tests if tests is not None else sorted(n for n in names if is_test(n))
+        by_lang = {lang: [t for t in tests if lang_of_test(t) == lang] for lang in ("js", "py", "lua")}
+        base_env = {k: v for k, v in os.environ.items() if k.upper() in ("PATH", "SYSTEMROOT", "TEMP", "TMP")}  # nothing else of yours
+        common = {"root": os.path.abspath(root), "test_timeout_ms": TEST_SECONDS * 1000, "memory_mb": MEMORY_MB}
+        results = []
+        if by_lang["js"] or (tests is not None and not any(by_lang.values()) and any(n.endswith(JS) for n in names)):
+            node = tools.node()
+            if not node: raise RuntimeError("the JavaScript sandbox needs Node.js: run  python -m gameai.checks install")
+            js = [n for n in names if n.endswith(JS)]
+            cfg = dict(common, scripts=_order([n for n in js if n not in by_lang["js"]]), tests=by_lang["js"], inspect=inspect, kit=KIT if kit else None)
+            results.append(("js", _sandbox([node, "--experimental-vm-modules", f"--max-old-space-size={MEMORY_MB}", RUNNER], cfg, root, timeout,
+                                           dict(base_env, NODE_NO_WARNINGS="1"))))
+        if by_lang["py"]:
+            results.append(("py", _sandbox([sys.executable, "-I", "-S", PY_RUNNER], dict(common, tests=by_lang["py"]), root, timeout,
+                                           dict(base_env, PYTHONIOENCODING="utf-8"))))
+        if by_lang["lua"]:
+            results.append(("lua", _sandbox([sys.executable, "-I", LUA_RUNNER], dict(common, tests=by_lang["lua"]), root, timeout,
+                                            dict(base_env, PYTHONIOENCODING="utf-8"))))
+        return _merge(results)
     finally:
         if tmp: shutil.rmtree(tmp, ignore_errors=True)
 

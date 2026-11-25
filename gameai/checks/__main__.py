@@ -10,14 +10,14 @@ def _read(paths):
 def main():
     ap = argparse.ArgumentParser(prog="python -m gameai.checks", description="format and check code")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    i = sub.add_parser("install"); i.add_argument("--csharp", action="store_true")
+    sub.add_parser("install")
     sub.add_parser("status")
     v = sub.add_parser("validate"); v.add_argument("files", nargs="+"); v.add_argument("--write", action="store_true", help="save the formatted files")
     v.add_argument("--no-kit", action="store_true", help="don't include GameKit's types"); v.add_argument("--json", action="store_true")
     for name in ("hover", "definition", "references", "completions"):
         q = sub.add_parser(name); q.add_argument("file"); q.add_argument("line", type=int); q.add_argument("col", type=int); q.add_argument("more", nargs="*")
     a = ap.parse_args()
-    if a.cmd == "install": print(json.dumps(tools.install(csharp=a.csharp), indent=1)); return
+    if a.cmd == "install": print(json.dumps(tools.install(), indent=1)); return
     if a.cmd == "status": print(json.dumps(status(), indent=1)); return
     if a.cmd == "validate":
         files = _read(a.files)

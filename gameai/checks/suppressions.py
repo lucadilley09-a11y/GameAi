@@ -13,7 +13,7 @@ import re
 
 # (languages, kind, pattern). Patterns run on the line with its string contents blanked out, so text inside quotes
 # never counts.
-JS, TS, PY, LUA, CS = "js", "ts", "py", "lua", "cs"
+JS, TS, PY, LUA = "js", "ts", "py", "lua"
 RULES = [
     ({JS, TS}, "ts-ignore", r"@ts-ignore\b"),
     ({JS, TS}, "ts-expect-error", r"@ts-expect-error\b"),
@@ -28,13 +28,9 @@ RULES = [
     ({PY}, "Any", r"(?::\s*Any\b|->\s*Any\b|\bcast\(\s*Any\b)"),
     ({LUA}, "diagnostic off", r"---?\s*@diagnostic\s+disable"),
     ({LUA}, "luacheck off", r"--\s*luacheck:\s*ignore\b"),
-    ({CS}, "pragma warning disable", r"#\s*pragma\s+warning\s+disable\b"),
-    ({CS}, "SuppressMessage", r"\[\s*(?:System\.Diagnostics\.CodeAnalysis\.)?SuppressMessage\b"),
-    ({CS}, "nullable disable", r"#\s*nullable\s+disable\b"),
-    ({CS}, "dynamic", r"\bdynamic\s+[A-Za-z_]"),
 ]
 LANG_OF = {".js": JS, ".mjs": JS, ".cjs": JS, ".jsx": JS, ".ts": TS, ".tsx": TS, ".mts": TS, ".cts": TS,
-           ".py": PY, ".lua": LUA, ".cs": CS}
+           ".py": PY, ".lua": LUA}
 WHY_SAME_LINE = re.compile(r"(?:(?<=\s)--\s+|\bbecause\b|\breason:|\bjustification:|\bwhy:)\s*(.*)", re.I)
 WHY_ABOVE = re.compile(r"^\s*(?://|#|--|/\*|\*)\s*(?:because\b|reason:|justification:|why:)\s*(.*)", re.I)
 MIN_WORDS = 3

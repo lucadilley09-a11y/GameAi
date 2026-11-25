@@ -20,4 +20,4 @@ tree-sitter-javascript==0.25.0
 tree-sitter-typescript==0.23.2
 tree-sitter-python==0.25.0
 tree-sitter-lua==0.5.0
-tree-sitter-c-sharp==0.24.0
+lupa==2.8

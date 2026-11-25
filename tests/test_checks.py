@@ -35,8 +35,8 @@ def main():
       kinds == [("ts-ignore", False), ("any", False), ("eslint-disable", True)] or print(kinds))
     s = suppressions.suppressions({"a.ts": "// justification: the save file is checked right below\n// @ts-expect-error\nlet b = 1;\n"})
     t("a reason on the line above counts", s and s[0]["justified"])
-    s = suppressions.suppressions({"a.py": "import os  # noqa\nx: Any = 1  # because the plugin API has no types\n", "a.lua": "---@diagnostic disable-next-line: undefined-global\n", "a.cs": "#pragma warning disable CS0168\n"})
-    t("Python, Lua and C# suppressions are found", sorted((x["file"], x["justified"]) for x in s) == [("a.cs", False), ("a.lua", False), ("a.py", False), ("a.py", True)] or print(s))
+    s = suppressions.suppressions({"a.py": "import os  # noqa\nx: Any = 1  # because the plugin API has no types\n", "a.lua": "---@diagnostic disable-next-line: undefined-global\n"})
+    t("Python and Lua suppressions are found", sorted((x["file"], x["justified"]) for x in s) == [("a.lua", False), ("a.py", False), ("a.py", True)] or print(s))
     r = checks.validate({"a.ts": "// @ts-ignore\nconst n: number = 'x';\nexport {};\n"})
     t("an unjustified suppression fails validation", not r["passed"] and r["unjustified"])
     r = checks.validate({"a.js": "// eslint-disable-next-line no-console -- nothing to hide on this line\nconst x = 1;\nexport { x };\n"})
@@ -48,6 +48,8 @@ def main():
     # lua formatting
     r = checks.validate({"a.lua": "local   x=1\nif x==1 then print( 'hi' ) end\n"})
     t("Lua is formatted", "a.lua" in r["diffs"] and r["passed"])
+    r = checks.validate({"a.lua": "local x = \nif then end\n"})
+    t("Lua syntax errors are caught", not r["passed"] and any(d["source"] in ("lua", "formatter") for d in r["errors"]) or print(checks.report(r)))
     # language server
     f = {"game.js": "function build(canvas) {\n  const g = GameKit.game({ canvas });\n  g.spawn('coin', 3);\n  return g;\n}\n"}
     h = checks.hover(f, "game.js", 3, 6)

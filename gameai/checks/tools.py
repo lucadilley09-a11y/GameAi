@@ -4,7 +4,6 @@ downloaded once; after that the checkers work offline.
     JavaScript tools (about 62 MB): TypeScript, ESLint + typescript-eslint, Prettier, StyLua (WebAssembly)
     Node.js (about 80 MB, only if this PC doesn't already have Node 20 or newer)
     ruff (about 25 MB, a Python package)
-    CSharpier: only with the C# sandbox (Phase 4 session 4), which needs the .NET SDK anyway
 Versions are pinned to the ones that were tested.
 """
 import glob, io, json, os, re, shutil, subprocess, sys, urllib.request, zipfile
@@ -12,14 +11,12 @@ import glob, io, json, os, re, shutil, subprocess, sys, urllib.request, zipfile
 DIR = os.path.join("runtime", "tools")
 NODE_DIR = os.path.join(DIR, "node")          # the npm packages
 NODE_DIST = os.path.join(DIR, "node-dist")    # a private Node.js, only when the PC has none
-DOTNET_DIR = os.path.join(DIR, "dotnet")
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 JS_PACKAGES = {
     "typescript": "6.0.3", "eslint": "10.15.0", "@eslint/js": "10.0.1", "typescript-eslint": "8.74.0",
     "globals": "17.14.0", "prettier": "3.10.1", "@johnnymorganz/stylua": "2.6.0",
 }
 RUFF = "0.16.9"
-CSHARPIER = None  # pinned when the C# sandbox is built and tested (Phase 4 session 4)
 MIN_NODE = 20
 
 
@@ -48,11 +45,6 @@ def ruff():
     for exe in (shutil.which("ruff"), os.path.join(os.path.dirname(sys.executable), "Scripts" if os.name == "nt" else "", "ruff" + (".exe" if os.name == "nt" else ""))):
         if exe and os.path.exists(exe): return exe
     return None
-
-
-def csharpier():
-    exe = os.path.join(DOTNET_DIR, "csharpier" + (".exe" if os.name == "nt" else ""))
-    return exe if os.path.exists(exe) else None
 
 
 def _get(url, timeout=600):
@@ -93,7 +85,7 @@ def _npm(node_exe):
     return [npm]
 
 
-def install(log=print, csharp=False):
+def install(log=print):
     """Install what's missing; safe to run again. -> status dict"""
     from ..phase0.common import need_space
     if not node_modules() or not node():
@@ -117,12 +109,5 @@ def install(log=print, csharp=False):
         log("  installing ruff (Python formatter and linter)...")
         p = subprocess.run([sys.executable, "-m", "pip", "install", f"ruff=={RUFF}"], capture_output=True, text=True, creationflags=NO_WINDOW)
         if p.returncode != 0: raise RuntimeError("installing ruff failed:\n" + p.stderr[-800:])
-    if csharp and not csharpier():
-        dotnet = shutil.which("dotnet")
-        if not dotnet: raise RuntimeError("the C# formatter needs the .NET SDK, which comes with the C# sandbox")
-        log("  installing CSharpier (C# formatter)...")
-        p = subprocess.run([dotnet, "tool", "install", "csharpier", "--tool-path", os.path.abspath(DOTNET_DIR)] + (["--version", CSHARPIER] if CSHARPIER else []),
-                           capture_output=True, text=True, creationflags=NO_WINDOW)
-        if p.returncode != 0: raise RuntimeError("installing CSharpier failed:\n" + (p.stderr or p.stdout)[-800:])
     from . import status
     return status()

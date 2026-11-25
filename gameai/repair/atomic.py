@@ -60,12 +60,12 @@ def evaluate(root_or_files, run_tests=True, inspect=False):
     from .. import checks
     from . import debugger
     files = root_or_files if isinstance(root_or_files, dict) else read_dir(root_or_files)
-    code = {p: t for p, t in files.items() if p.endswith((".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".py", ".lua", ".cs"))}
+    code = {p: t for p, t in files.items() if p.endswith((".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".py", ".lua"))}
     diags = checks.check(code) if code else []
     sup = checks._sup.suppressions(code)
     out = {"errors": [d for d in diags if d["severity"] == "error"], "warnings": [d for d in diags if d["severity"] == "warning"],
            "unjustified": [s for s in sup if not s["justified"]], "build": _html_refs(files), "tests": {}, "load_errors": []}
-    if run_tests and any(p.endswith((".js", ".mjs")) for p in files):
+    if run_tests and any(debugger.is_test(p) for p in files):
         r = debugger.run(root_or_files if not isinstance(root_or_files, dict) else files, inspect=inspect)
         out["test_result"] = r
         out["tests"] = {t["name"]: bool(t.get("passed")) for t in r.get("tests", [])}

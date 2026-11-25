@@ -42,7 +42,7 @@ async function format(files) {
     try {
       if (PRETTIER.test(name)) out[name] = await prettier.format(text, { filepath: name, printWidth: 100, singleQuote: true });
       else if (/\.lua$/i.test(name) && stylua) out[name] = stylua.formatCode(text, stylua.Config.new(), null, stylua.OutputVerification.None);
-      else out[name] = text;  // not a format these tools handle (Python goes to ruff, C# to CSharpier)
+      else out[name] = text;  // not a format these tools handle (Python goes to ruff)
     } catch (e) { errors[name] = String(e.message || e).split('\n').slice(0, 6).join('\n'); out[name] = text; }
   }
   return { files: out, errors };

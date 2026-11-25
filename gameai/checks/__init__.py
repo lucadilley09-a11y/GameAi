@@ -13,8 +13,7 @@ From Python:
 What runs, by language:
     JavaScript / TypeScript   Prettier, then TypeScript (types, also for plain JS, with GameKit's types) and ESLint
     Python                    ruff format, then ruff check
-    Lua                       StyLua (format)
-    C#                        CSharpier (format; added with the C# sandbox, Phase 4 session 4)
+    Lua                       StyLua (format), then a compile check for syntax errors
 Every language: suppression rules (see suppressions.py).
 """
 import difflib, json, os, subprocess, sys, threading
@@ -88,10 +87,6 @@ def format_files(files):
             p = _run([tools.ruff(), "format", "--stdin-filename", name, "-"], text)
             if p.returncode == 0: out[name] = p.stdout
             else: errors[name] = p.stderr.strip()[:500]
-        elif low.endswith(".cs") and tools.csharpier():
-            p = _run([tools.csharpier(), "format"], text)
-            if p.returncode == 0 and p.stdout.strip(): out[name] = p.stdout
-            else: errors[name] = (p.stderr or p.stdout).strip()[:500]
     diffs = {n: "".join(difflib.unified_diff(files[n].splitlines(True), out[n].splitlines(True), f"{n} (before)", f"{n} (formatted)", n=1))
              for n in files if out[n] != files[n]}
     return out, diffs, errors
@@ -114,6 +109,22 @@ def _ruff_check(name, text):
     return out
 
 
+def _lua_check(name, text):
+    """Lua has no type checker; this compiles the file (without running it), so syntax errors are caught"""
+    try:
+        from lupa import lua54
+    except ImportError:
+        return []
+    import re
+    got = lua54.LuaRuntime(register_eval=False, register_builtins=False).globals().load(text, "@" + name, "t")
+    err = got[1] if isinstance(got, tuple) else None
+    if not err: return []
+    m = re.match(r".+?:(\d+): (.*)", str(err))
+    line = int(m.group(1)) if m else 1
+    return [{"file": name, "line": line, "col": 1, "line_text": (text.split("\n")[line - 1] if line <= text.count("\n") + 1 else ""),
+             "severity": "error", "source": "lua", "code": "syntax", "message": m.group(2) if m else str(err)}]
+
+
 def check(files, kit=True):
     """-> diagnostics: [{file, line, col, line_text, severity ('error'|'warning'), source, code, message}]
     kit=True includes GameKit's types, so wrong GameKit names and arguments are caught too."""
@@ -122,6 +133,7 @@ def check(files, kit=True):
     if scripts: diags += _helper.ask("check", files=scripts, kit=kit)["diagnostics"]
     for name, text in files.items():
         if name.lower().endswith(".py") and tools.ruff(): diags += _ruff_check(name, text)
+        elif name.lower().endswith(".lua"): diags += _lua_check(name, text)
     return sorted(diags, key=lambda d: (d["file"], d["line"], d["col"]))
 
 
@@ -174,7 +186,7 @@ def completions(files, file, line, col, kit=True, limit=50):
 
 def status():
     """which checkers are ready"""
-    s = {"node": tools.node(), "js_tools": bool(tools.node_modules()), "ruff": tools.ruff(), "csharpier": tools.csharpier()}
+    s = {"node": tools.node(), "js_tools": bool(tools.node_modules()), "ruff": tools.ruff()}
     if s["node"] and s["js_tools"]:
         try: s.update(_helper.ask("ping"))
         except Exception as e: s["error"] = str(e)

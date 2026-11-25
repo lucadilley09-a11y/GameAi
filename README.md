@@ -237,12 +237,11 @@ Everything stays on your computer.
 Every piece of code the AI writes is formatted, then checked, before it counts (plan: Phase 4). The autopilot
 installs them (about 65 MB, in `runtime\tools`); after that they work offline.
 
-- **Formatting first, never silent:** Prettier (JavaScript, TypeScript, HTML, CSS), ruff (Python), StyLua (Lua),
-  CSharpier (C#, added with the C# sandbox). Every change is shown as a diff.
+- **Formatting first, never silent:** Prettier (JavaScript, TypeScript, HTML, CSS), ruff (Python), StyLua (Lua). Every change is shown as a diff.
 - **Then the checkers:** the TypeScript type checker (also for plain JavaScript, and it knows GameKit's types, so
   `g.levle(...)` or `goal('colect')` is caught), ESLint, ruff, and a language server (hover, go to definition,
   references, completions).
-- **No hiding problems:** `any`, `@ts-ignore`, `eslint-disable`, `# noqa`, `#pragma warning disable` and similar
+- **No hiding problems:** `any`, `@ts-ignore`, `eslint-disable`, `# noqa`, `@diagnostic disable` and similar
   fail unless they carry a reason of at least 3 words (after ` -- ` or `because`). Empty `catch` blocks and bare
   `except: pass` are errors.
 
@@ -259,6 +258,9 @@ How the AI changes existing code without breaking it (plan: Phase 4):
   is refused.
 - **Debugger:** runs the tests and shows why one failed: the error, the lines involved, expected vs actual and the
   variable values at that moment (and the game's state when asked). `python -m gameai.repair test my_game`
+- **Sandboxes:** tests run in a sandbox per language (JavaScript, Python, Lua): no files outside the project, no
+  writing files, no network, no other programs, at most 512 MB of memory and 10 seconds per test. Python tests are
+  `test_*` functions with plain `assert`; Lua tests use `test("name", function() expect(x).toBe(y) end)`.
 - **All-or-nothing changes:** edits across several files are tried in a copy first; formatting, checkers, tests
   and the page's file links must not get worse, or nothing changes. Every applied change can be undone:
   `python -m gameai.repair rollback my_game`.
