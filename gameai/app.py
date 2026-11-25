@@ -134,14 +134,14 @@ class H(BaseHTTPRequestHandler):
             if not STATE["model"]: return self.send(409, {"error": "no model yet: type /train"})
             return self.send(200, decode(str(b.get("prompt", ""))[:400]))
         if path == "/api/train":
-            if STATE["job"]["running"]: return self.send(409, {"error": "already training"})
+            if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             size = b.get("size", "small")
             if size not in ("tiny", "small", "base", "large"): return self.send(400, {"error": "size must be tiny, small, base or large"})
             threading.Thread(target=run_job, args=(["gameai.all", "--size", size],), daemon=True).start()
             return self.send(200, {"ok": True})
         if path == "/api/learn":
             if b.get("on", True):
-                if STATE["job"]["running"]: return self.send(409, {"error": "busy: wait for the current job to finish"})
+                if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
                 if not STATE["model"]: return self.send(409, {"error": "train a first AI with /train"})
                 threading.Thread(target=run_job, args=(["gameai.learn"], "learn"), daemon=True).start()
                 return self.send(200, {"ok": True})
@@ -155,7 +155,7 @@ class H(BaseHTTPRequestHandler):
             save_share()
             return self.send(200, {"ok": True})
         if path == "/api/teacher":
-            if STATE["job"]["running"]: return self.send(409, {"error": "busy: wait for the current job to finish"})
+            if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             n = max(50, min(int(b.get("n") or 2000), 100000))
             threading.Thread(target=run_job, args=(["gameai.teacher", "--n", str(n)], "teacher"), daemon=True).start()
             return self.send(200, {"ok": True, "n": n})
@@ -183,7 +183,7 @@ class H(BaseHTTPRequestHandler):
             if r.get("installed"): threading.Thread(target=restart_soon, daemon=True).start()
             return self.send(200, r)
         if path == "/api/test":
-            if STATE["job"]["running"]: return self.send(409, {"error": "busy"})
+            if STATE["job"]["running"]: return self.send(409, {"error": busy_msg()})
             threading.Thread(target=run_job, args=(["gameai.bench"],), daemon=True).start()
             return self.send(200, {"ok": True})
         if path == "/api/save":
@@ -317,6 +317,11 @@ RESTART = 42  # start.bat restarts the app when it exits with this code (after a
 def restart_soon():
     time.sleep(1.5)  # let the page get its answer first
     os._exit(RESTART)
+
+
+def busy_msg():
+    what = {"teacher": "The teacher is still writing examples", "learn": "Always-on learning is running"}.get(STATE["job"].get("kind"), "Training is still running")
+    return f"{what}. Type /stop to cancel it, then try again."
 
 
 def kill_job():
