@@ -50,6 +50,8 @@ class Helper:
                 try:
                     self.p.stdin.write(json.dumps({"id": self.n, "op": op, **kw}) + "\n"); self.p.stdin.flush()
                     line = self.p.stdout.readline()
+                    while line and not line.startswith('{"id":%d,' % self.n):  # skip anything a tool printed by itself
+                        line = self.p.stdout.readline()
                     if line: break
                 except (BrokenPipeError, OSError):
                     pass

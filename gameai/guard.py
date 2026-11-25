@@ -106,6 +106,11 @@ def test_texts():
             for line in open(p, encoding="utf-8"):
                 if line.strip(): yield text_of(json.loads(line))
     yield from all_validation_texts()
+    try:  # the coding validation tasks (hand-written and the teacher's validation share)
+        from .coding import tasks as coding_tasks
+        for t in coding_tasks.load("val"): yield t["prompt"]
+    except Exception:
+        pass
 
 
 def build_index():

@@ -13,6 +13,8 @@ import argparse, json, os, random, time
 
 SKILLS = {  # skill -> (system prompt, training rows loader name). More skills arrive with their phases.
     "game_design": "recipes",
+    "code": "verified first attempts (data/coding/first_pass.jsonl)",          # plan: first-pass and repair trained separately
+    "code_repair": "verified fixes of failed code (data/coding/repair.jsonl)",
 }
 
 
@@ -25,6 +27,9 @@ def chat_rows(skill):
         rows = splits.rows("game_requests", "train") + splits.rows("real_talk", "train") + splits.rows("yours", "train")
         return [{"system": RECIPE_SYSTEM, "prompt": r["prompt"], "answer": "\n".join(f"{f}={r['recipe'].get(f, 'auto')}" for f in FIELD_NAMES)}
                 for r in rows if "recipe" in r]
+    if skill in ("code", "code_repair"):
+        from .coding import selfteach
+        return [{"system": r["system"], "prompt": r["prompt"], "answer": r["answer"]} for r in selfteach.rows("first" if skill == "code" else "repair")]
     raise KeyError(f"no training data defined for skill {skill!r} yet")
 
 
@@ -87,6 +92,17 @@ def validate(model, tok, skill, device, n=300):
             rows = [r for r in rows if "recipe" in r]
             if len(rows) < 10: continue
             out[name] = {"score": round(val_exact(model, tok, rows[:min(len(rows), 100)], RECIPE_SYSTEM, device)["fully_right"], 4), "n": min(len(rows), 100)}
+    if skill in ("code", "code_repair"):  # the real measure: validation tasks solved, checked in the sandbox
+        from .coding import evaluate
+        def generate(messages):
+            import torch
+            ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", enable_thinking=False).to(device)
+            model.eval()
+            with torch.no_grad(): out_ids = model.generate(ids, max_new_tokens=900, do_sample=False)
+            model.train()
+            return tok.decode(out_ids[0][ids.shape[1]:], skip_special_tokens=True)
+        r = evaluate.pass_rate(generate, repair=skill == "code_repair")
+        out["coding_tasks"] = {"score": r["pass_rate"], "n": r["tasks"]}
     gen = (splits.rows("general", "anchor") + splits.rows("general", "rotating"))[:n]
     if gen:
         import torch

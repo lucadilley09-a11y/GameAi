@@ -25,7 +25,8 @@ COLLECTIONS = {
     # filled in later phases (each gets train / validation_anchor / validation_rotating files under data/splits/<name>/)
     "general": {"note": "general chat, instructions, other languages, reasoning (protects general ability)"},
     "intent": {"note": "people-written requests: slang, typos, ambiguity, multi-turn, edits to existing projects"},
-    "code": {"note": "coding tasks: multi-file, changes to existing projects, bug fixes, all four languages"},
+    "code": {"note": "coding tasks in JavaScript/TypeScript, Python and Lua: data/coding (tasks_val.jsonl plus the hand-written "
+                     "seed tasks are validation, tasks_train.jsonl is for self-teaching); multi-file and existing-project tasks too"},
     "ui": {"note": "interface tasks and screenshots"},
     "end_to_end": {"note": "practice and validation versions of the end-to-end tasks (the sealed ones live in sealed/)"},
 }

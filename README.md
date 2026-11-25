@@ -264,3 +264,22 @@ How the AI changes existing code without breaking it (plan: Phase 4):
 - **All-or-nothing changes:** edits across several files are tried in a copy first; formatting, checkers, tests
   and the page's file links must not get worse, or nothing changes. Every applied change can be undone:
   `python -m gameai.repair rollback my_game`.
+
+## Code training
+
+How the AI gets better at writing code (plan: Phase 4). The autopilot runs it after the first release:
+
+1. **Coding teacher:** up to three free coding models (Qwen2.5-Coder-7B, Qwen3.5-9B, Qwen3.5-4B) each try the
+   validation tasks once; the best one stays (only one is ever on disk). If your AI is already far ahead, there is none.
+2. **Practice tasks:** the teacher writes new tasks in JavaScript, Python and Lua. Each is kept only if its own
+   solution passes the visible and hidden tests and the tests fail without a solution.
+3. **Practice:** the AI tries each task 16 times; only solutions that pass everything are kept (at most 4 per task).
+   Failed tries get a repair attempt with what their tests said; checked fixes are kept too. The teacher solves
+   what the AI can't.
+4. **Training:** first tries and repairs train two separate skills (`code` and `code_repair`), scored by how many
+   validation tasks they solve in the sandbox.
+5. **Repair or retry:** both are compared at the same cost on the validation tasks; each language uses the winner.
+
+A solution only counts if every visible and hidden test passes, the checkers find no errors, and it doesn't cheat
+(changing the test functions, reaching into the sandbox, exiting early or copying the tests' answers). The 16
+hand-written tasks in `gameai/coding/seed_tasks.py` are validation only and never trained on.

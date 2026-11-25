@@ -8,7 +8,7 @@ Versions are pinned to the ones that were tested.
 """
 import glob, io, json, os, re, shutil, subprocess, sys, urllib.request, zipfile
 
-DIR = os.path.join("runtime", "tools")
+DIR = os.path.abspath(os.path.join("runtime", "tools"))  # fixed when the app starts, so changing folders later doesn't lose it
 NODE_DIR = os.path.join(DIR, "node")          # the npm packages
 NODE_DIST = os.path.join(DIR, "node-dist")    # a private Node.js, only when the PC has none
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)

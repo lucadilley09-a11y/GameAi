@@ -40,6 +40,12 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     ("mix", "testing how much everyday data to mix in (about 2 hours)", None, ["gameai.autopilot", "run", "mix"]),
     ("adapter", "training the game-design skill (about 2 hours)", None, ["gameai.autopilot", "run", "adapter"]),
     ("release", "making and checking the first release", None, ["gameai.autopilot", "run", "release"]),
+    # Phase 4: the code skill
+    ("coding_teacher", "choosing the coding teacher (tests up to 3 free models; downloads one at a time)", None, ["gameai.autopilot", "run", "coding_teacher"]),
+    ("code_tasks", "the teacher writing coding practice tasks (checked in the sandbox)", None, ["gameai.autopilot", "run", "code_tasks"]),
+    ("code_practice", "practising code: many tries per task, only checked solutions kept (hours)", None, ["gameai.autopilot", "run", "code_practice"]),
+    ("code_train", "training the coding skills: first tries and repairs, separately (about 3 hours)", None, ["gameai.autopilot", "run", "code_train"]),
+    ("code_strategy", "comparing repairing code with simply trying again, at the same cost", None, ["gameai.autopilot", "run", "code_strategy"]),
 ]
 
 
@@ -173,8 +179,64 @@ def run(sid):
         pick, why = release.compare(a, b); print(why)
         m = release.finish(pick["id"])
         if m.get("blocked"): raise SystemExit(m["blocked"])
+    elif sid.startswith("code"):
+        code_step(sid)
     else:
         raise SystemExit(f"unknown step {sid}")
+
+
+CODE_TASKS = 400        # new practice tasks the teacher writes
+PRACTICE_TRIES = 16     # tries per task while practising (plan: "for example 16")
+
+
+def _core_server(skill=None, port=8791):
+    """the AI itself in llama.cpp, with a skill's active adapter if it has one"""
+    from . import adapters, registry
+    from .phase0 import runtime as R
+    ent = registry.load()["entries"]
+    extra = []
+    act = adapters.active(skill) if skill else None
+    if act:
+        folder = adapters._dir(skill, act["version"])
+        g = os.path.join(folder, "adapter.gguf")
+        if not os.path.exists(g): R.lora_to_gguf(folder, ent["core_hf"]["path"], g)
+        extra = ["--lora", g]
+    return R.Server(ent["core"]["path"], ctx=8192, port=port, extra=extra)
+
+
+def code_step(sid):
+    from .coding import teacher, tasks as T, selfteach, compare
+    from .phase0 import runtime as R
+    if sid == "coding_teacher":
+        with _core_server("code") as core:
+            r = teacher.choose(core.chat)
+        print(json.dumps({k: r.get(k) for k in ("winner", "self", "candidates")}, indent=1)[:3000])
+    elif sid == "code_tasks":
+        g = teacher.winner()
+        if not g: print("no coding teacher (the AI is ahead of them, or none could be used): practice uses the existing tasks"); return
+        have = len(T.load("train"))
+        with R.Server(g, ctx=8192, port=8792) as srv:
+            print(f"kept {teacher.make_tasks(srv.chat, max(0, CODE_TASKS - have))} new tasks")
+    elif sid == "code_practice":
+        train = T.load("train")
+        if not train: raise SystemExit("there are no practice tasks yet (the teacher step writes them)")
+        with _core_server("code") as core:
+            print("the AI:", json.dumps(selfteach.run(core.chat, train, n=PRACTICE_TRIES, source="self")))
+        g = teacher.winner()
+        if g:  # the teacher fills the gaps: tasks the AI couldn't solve
+            solved = {r["task"] for r in selfteach.rows("first")}
+            gaps = [t for t in train if t["id"] not in solved]
+            with R.Server(g, ctx=8192, port=8792) as srv:
+                print("the teacher, on the tasks the AI couldn't solve:", json.dumps(selfteach.run(srv.chat, gaps, n=4, source="teacher")))
+    elif sid == "code_train":
+        best = (load().get("mix") or {}).get("best_arm") or {"share": 0.3, "source": "data"}
+        if len(selfteach.rows("first")) < 50: raise SystemExit("fewer than 50 checked solutions so far: practice more first")
+        _train("code", 120, best["share"], best["source"])
+        if len(selfteach.rows("repair")) >= 30: _train("code_repair", 60, best["share"], best["source"])
+        else: print("not enough checked repairs yet to train the repair skill; it trains in a later round")
+    elif sid == "code_strategy":
+        with _core_server("code") as core:
+            compare.run(core.chat)
 
 
 def _train(skill, minutes, share, source="data"):
