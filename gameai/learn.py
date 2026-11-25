@@ -6,6 +6,9 @@ Each round: fresh practice data it has never seen -> continue training from the 
 model (warm start, gentle learning rate) -> benchmark. The new version replaces the current
 one only if it scores better, so the AI can only get better. Progress and the score after
 every round go to learn/history.jsonl (the app draws them as the "how smart" graph).
+The teacher AI runs at the same time (if you have an NVIDIA GPU): it keeps writing natural,
+real-person examples into data/teacher.jsonl, and every round learns from all of them so far.
+Turn that off with GAMEAI_LEARN_TEACHER=0.
 Stop: /learn off in the app, Ctrl+C here, or create the file learn/STOP."""
 import json, os, subprocess, sys, time
 
@@ -15,6 +18,27 @@ PRACTICE = int(os.environ.get("GAMEAI_LEARN_DATA", 40_000))  # new practice prom
 
 def run(args):
     return subprocess.run([sys.executable, "-m", *args]).returncode == 0
+
+
+TEACHER_MODEL = os.environ.get("GAMEAI_LEARN_TEACHER_MODEL", "Qwen/Qwen3.5-4B")  # the smaller teacher fits beside training on 8 GB
+
+
+def count(path):
+    return sum(1 for _ in open(path, encoding="utf-8")) if os.path.exists(path) else 0
+
+
+def start_teacher():
+    """The teacher writes examples non-stop in the background while the rounds run."""
+    if os.environ.get("GAMEAI_LEARN_TEACHER", "1") == "0": return None
+    try:
+        import torch
+        if not torch.cuda.is_available(): return None
+    except Exception:
+        return None
+    log = open("learn/teacher.log", "a", encoding="utf-8")
+    print(f"=== Starting the teacher ({TEACHER_MODEL}); it writes examples while the AI learns ===", flush=True)
+    return subprocess.Popen([sys.executable, "-m", "gameai.teacher", "--n", "100000000", "--model", TEACHER_MODEL, "--batch", "16"],
+                            stdout=log, stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def main():
@@ -29,7 +53,22 @@ def main():
         with open(hist, "a") as f:
             f.write(json.dumps({"round": 0, "time": time.time(), "exact": cur["frozen"]["exact"], "typo": cur["typo"]["exact"], "promoted": True}) + "\n")
         rnd = 1
+    teacher, warned = start_teacher(), False
+    try:
+        loop(rnd, hist, teacher)
+    finally:
+        if teacher and teacher.poll() is None: teacher.terminate()
+    print("=== Always-on learning stopped ===", flush=True)
+
+
+def loop(rnd, hist, teacher):
+    warned = False
     while not os.path.exists("learn/STOP"):
+        if teacher and teacher.poll() is not None and not warned:
+            warned = True
+            print("The teacher stopped (see learn/teacher.log); learning carries on without new examples.", flush=True)
+        n_teacher = count("data/teacher.jsonl")
+        if n_teacher: print(f"Teacher examples so far: {n_teacher}", flush=True)
         print(f"=== Round {rnd}: new practice data ===", flush=True)
         if not run(["gameai.datagen", "--out", "data/round", "--train", str(PRACTICE), "--val", "1000", "--test", "10",
                     "--seed", str(1000 + rnd)]): break
@@ -42,13 +81,12 @@ def main():
         best = json.load(open("models/current.json"))  # the AI actually in use after this round
         row = {"round": rnd, "time": time.time(), "exact": best["frozen"]["exact"], "typo": best["typo"]["exact"],
                "natural": (best.get("natural") or {}).get("exact"),
-               "candidate": last["frozen"]["exact"], "promoted": last["promoted"]}
+               "candidate": last["frozen"]["exact"], "promoted": last["promoted"], "teacher": n_teacher}
         with open(hist, "a") as f:
             f.write(json.dumps(row) + "\n")
         print(f"@@L{json.dumps(row)}", flush=True)
         print(f"Round {rnd}: candidate {row['candidate']:.2%}, in use {row['exact']:.2%} -> {'NEW BEST, now in use' if row['promoted'] else 'not better, kept the old one'}", flush=True)
         rnd += 1
-    print("=== Always-on learning stopped ===", flush=True)
 
 
 if __name__ == "__main__":

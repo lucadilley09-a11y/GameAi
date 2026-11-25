@@ -52,11 +52,21 @@ After updating to Phase 2, train once (`/train`): the AI has a bigger language t
 
 ## The teacher (Phase 2)
 
-`/teacher` (or `/teacher 5000`) has a free open AI, Qwen3.5-9B (Apache 2.0, falls back to Qwen3.5-4B),
+`/teacher` (or `/teacher 5000`) has a free open AI, Qwen3.5-4B (Apache 2.0; add `--model Qwen/Qwen3.5-9B` for the bigger, slower one),
 write natural, varied game requests for your AI to learn from. Every example is self-checked: the teacher
 reads its own request back, and it's kept only if it gets exactly the same game. The first run downloads the
-teacher (about 6 GB, no account). Afterwards `/train` or `/learn on` uses the examples automatically, and the
-test gains a "real talk" score: how well your AI understands natural wording. Your AI never needs the teacher to run.
+teacher (about 3 GB, no account). Examples are saved as they're written, so you can stop it any time.
+
+**Learning while it writes:** `/learn on` runs the teacher at the same time. Every learning round learns from all teacher examples so far, so the AI improves as the
+teacher goes. The graph shows how many it has written. The test gains a "real talk" score: how well your AI understands natural wording. Your AI never needs the teacher to run.
+
+## Playtest bot
+
+Every new game is played by a bot in fast-forward before you see it (a few milliseconds per try).
+It tries several versions of the level and keeps one it can beat, with hardness closest to what you asked for.
+`/quality fast|normal|best` = 1, 6 or 16 versions. If it can't beat any version you get a heads-up.
+Results are saved in `memory/playtests.jsonl` for future training. The bot isn't a great player yet (it beats
+about half of random games on the first try, and about 4 in 5 when it gets 6 versions to choose from).
 
 ## Always-on learning
 

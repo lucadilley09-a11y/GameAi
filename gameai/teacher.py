@@ -13,7 +13,7 @@ import argparse, json, os, random, re, sys, time
 from .recipe import FIELDS, FIELD_NAMES, OUT_FIELDS, AUTO, rules_of, RULE_VALUES, is_valid_out
 from .datagen import make_example
 
-CANDIDATES = ["Qwen/Qwen3.5-9B", "Qwen/Qwen3.5-4B"]
+CANDIDATES = ["Qwen/Qwen3.5-4B", "Qwen/Qwen3.5-9B"]  # 4B first: about twice as fast; use --model Qwen/Qwen3.5-9B for the bigger one
 STYLES = ["casual, all lowercase, like a text message", "an excited kid", "short and direct", "a longer description with a bit of story",
           "with one or two small spelling mistakes", "polite", "gamer slang", "a question, like 'can you make...'", "bossy and specific",
           "describing it to a friend", "very brief, few words", "rambling and informal"]
@@ -51,31 +51,37 @@ def write_prompt(sp, style):
 
 
 def check_prompt(text):
-    vals = {f: FIELDS[f] for f in FIELD_NAMES}
+    """Short answer on purpose: only the settings the request mentions, one per line (about 5x less to write)."""
+    vals = {f: [v for v in FIELDS[f] if v != AUTO] for f in FIELD_NAMES}
     return [{"role": "user", "content":
-             "Read this request for a top-down game and write down its settings as JSON.\n"
-             f"Request: {text}\n\nKeys and allowed values (use \"auto\" when the request doesn't say):\n" +
-             "\n".join(f"{k}: {', '.join(v)}" for k, v in vals.items()) +
-             "\ncount means how many enemies (few/some/many). size is the map size. powerup is the kind of pickup (none = explicitly no power-ups)."
-             "\nrules: a list of at most 2 objects {\"trig\", \"tn\", \"act\", \"an\"} with "
-             "trig in collect/hit/every/score/powerup, tn = seconds for every (5/10/20) or the count for score (3/5/10) else \"none\", "
-             "act in spawn/faster/slower/boost/heal/teleport/open_exit/freeze, an = \"1\" or \"3\" for spawn else \"none\". Use [] if there are no rules."
-             "\nReply with only the JSON object."}]
+             "Read this request for a top-down game. List ONLY the settings it actually mentions, one per line as key=value.\n"
+             f"Request: {text}\n\nKeys and allowed values:\n" +
+             "\n".join(f"{k}: {'/'.join(v)}" for k, v in vals.items()) +
+             "\n(count = how many enemies; size = map size; powerup=none only if it says no power-ups; enemy=none only if it says no enemies)"
+             "\nRules (at most 2), one per line as: rule=<when> <number or none> <what> <number or none>"
+             "\n  when: collect/hit/every/score/powerup (every needs seconds 5/10/20, score needs 3/5/10)"
+             "\n  what: spawn/faster/slower/boost/heal/teleport/open_exit/freeze (spawn needs 1 or 3)"
+             "\n  example: rule=every 10 spawn 3"
+             "\nWrite nothing else. If it mentions nothing, write: none"}]
 
 
 def parse_check(text):
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m: return None
-    try:
-        d = json.loads(m.group(0))
-    except Exception:
-        return None
-    out = {f: str(d.get(f, AUTO)).lower() for f in FIELD_NAMES}
-    rules = d.get("rules") or []
-    for i in range(1, 3):
-        r = rules[i - 1] if i <= len(rules) and isinstance(rules[i - 1], dict) else {}
-        for k in ("trig", "tn", "act", "an"):
-            out[f"r{i}_{k}"] = str(r.get(k, "none")).lower() if r else "none"
+    out = {f: AUTO for f in FIELD_NAMES}
+    for i in (1, 2):
+        for k in ("trig", "tn", "act", "an"): out[f"r{i}_{k}"] = "none"
+    n_rules = 0
+    for line in text.lower().splitlines():
+        if "=" not in line: continue
+        k, v = (x.strip().strip("-*` ") for x in line.split("=", 1))
+        if k == "rule":
+            parts = v.split()
+            if len(parts) != 4 or n_rules == 2: return None
+            n_rules += 1
+            for key, val in zip(("trig", "tn", "act", "an"), parts): out[f"r{n_rules}_{key}"] = val
+        elif k in out:
+            out[k] = v
+        else:
+            return None  # an unknown key: the teacher didn't follow the format, don't trust it
     return out
 
 
@@ -97,7 +103,7 @@ def load_teacher(name):
     sys.exit("No teacher could be loaded. Send Claude the lines above.")
 
 
-def chat(tok, model, conversations, max_new):
+def chat(tok, model, conversations, max_new, sample=True):
     import torch
     texts = []
     for c in conversations:
@@ -107,7 +113,8 @@ def chat(tok, model, conversations, max_new):
             texts.append(tok.apply_chat_template(c, tokenize=False, add_generation_prompt=True))
     enc = tok(texts, return_tensors="pt", padding=True).to(model.device)
     with torch.no_grad():
-        out = model.generate(**enc, max_new_tokens=max_new, do_sample=True, temperature=0.9, top_p=0.95, pad_token_id=tok.pad_token_id or tok.eos_token_id)
+        kw = dict(do_sample=True, temperature=0.9, top_p=0.95) if sample else dict(do_sample=False)
+        out = model.generate(**enc, max_new_tokens=max_new, pad_token_id=tok.pad_token_id or tok.eos_token_id, **kw)
     res = tok.batch_decode(out[:, enc["input_ids"].shape[1]:], skip_special_tokens=True)
     return [re.sub(r"<think>.*?</think>", "", r, flags=re.S).strip() for r in res]
 
@@ -115,7 +122,7 @@ def chat(tok, model, conversations, max_new):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=2000, help="examples to keep")
-    ap.add_argument("--batch", type=int, default=16)
+    ap.add_argument("--batch", type=int, default=48)
     ap.add_argument("--model", default=None)
     a = ap.parse_args()
     import torch
@@ -136,8 +143,8 @@ def main():
                 if spec(lab) and is_valid_out(lab) and not (lab["enemy"] == "none" and lab["goal"] == "survive"):
                     labels.append(lab)
             styles = [rng.choice(STYLES) for _ in labels]
-            prompts = chat(tok, model, [write_prompt(spec(l), s) for l, s in zip(labels, styles)], 90)
-            checks = chat(tok, model, [check_prompt(p) for p in prompts], 220)
+            prompts = chat(tok, model, [write_prompt(spec(l), s) for l, s in zip(labels, styles)], 70)
+            checks = chat(tok, model, [check_prompt(p) for p in prompts], 70, sample=False)
             for lab, st, p, c in zip(labels, styles, prompts, checks):
                 tried += 1
                 got = parse_check(c)

@@ -158,6 +158,10 @@ class H(BaseHTTPRequestHandler):
             n = max(50, min(int(b.get("n") or 2000), 100000))
             threading.Thread(target=run_job, args=(["gameai.teacher", "--n", str(n)], "teacher"), daemon=True).start()
             return self.send(200, {"ok": True, "n": n})
+        if path == "/api/playlog":
+            os.makedirs("memory", exist_ok=True)
+            with open("memory/playtests.jsonl", "a", encoding="utf-8") as f: f.write(json.dumps(dict(b, time=time.time())) + "\n")
+            return self.send(200, {"ok": True})
         if path == "/api/quit":
             threading.Thread(target=quit_soon, daemon=True).start()
             return self.send(200, {"ok": True})
@@ -279,7 +283,9 @@ def quit_soon():
     """Stop everything: the training job (if any) and the app."""
     time.sleep(0.5)
     p = STATE.get("proc")
-    if p and p.poll() is None: p.kill()
+    if p and p.poll() is None:  # also stop anything it started (like the teacher)
+        if os.name == "nt": subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True)
+        else: p.kill()
     os._exit(0)
 
 

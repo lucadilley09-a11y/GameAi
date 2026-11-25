@@ -246,7 +246,12 @@ function resolve(pred,base){
  return {r,src};
 }
 function bfs(grid,sx,sy){const d=grid.map(r=>r.map(()=>-1)),q=[[sx,sy]];d[sy][sx]=0;for(let h=0;h<q.length;h++){const [x,y]=q[h];for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;if(grid[ny]&&grid[ny][nx]===0&&d[ny][nx]<0){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}}}return d}
+function seeded(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function build(r){
+ if(r.seed==null)return buildLevel(r);
+ const R=Math.random;Math.random=seeded(r.seed);try{return buildLevel(r)}finally{Math.random=R}
+}
+function buildLevel(r){
  const diff={easy:.7,normal:1,hard:1.4}[r.difficulty],[cols,rows]={small:[16,12],medium:[20,15],big:[34,24]}[r.size],area=cols*rows/300;let grid,dist,cells;
  for(let tries=0;tries<40;tries++){
   grid=Array.from({length:rows},(_,y)=>Array.from({length:cols},(_,x)=>(x===0||y===0||x===cols-1||y===rows-1)?1:0));
@@ -277,6 +282,7 @@ function build(r){
 function floorSpot(minD){let pos,k=0;do{pos={x:(1+ri(S.cols-2))*TS+16,y:(1+ri(S.rows-2))*TS+16};k++}while(k<80&&(solid(pos.x,pos.y)||Math.hypot(pos.x-S.p.x,pos.y-S.p.y)<minD));return pos}
 const ACT_TEXT={spawn:n=>n==='3'?'3 more enemies appear!':'A new enemy appears!',faster:()=>'Enemies speed up!',slower:()=>'Enemies slow down',boost:()=>'Speed boost!',heal:()=>'+1 heart',teleport:()=>'Teleported!',open_exit:()=>'The exit is open!',freeze:()=>'Enemies frozen!'};
 function act(x){
+ if(S.stat)S.stat.acts++;
  if(x.act==='spawn')for(let i=0;i<+x.an;i++)S.enemies.push(enemy(S.spawnType,floorSpot(200)));
  else if(x.act==='faster')S.espd=Math.min(S.espd*1.25,S.espd0*3);
  else if(x.act==='slower')S.espd=Math.max(S.espd*.8,S.espd0*.3);
@@ -310,15 +316,90 @@ function update(dt){
   let mx=e.dx*sp,my=e.dy*sp;if(e.jit){mx+=(Math.random()-.5)*e.jit*sp*2;my+=(Math.random()-.5)*e.jit*sp*2}
   const ox=e.x,oy=e.y;move(e,mx,my);
   if(!e.ghost&&!e.hop&&Math.hypot(e.x-ox,e.y-oy)<sp*.3){e.stuck=.6;const a=Math.random()*6.283;e.dx=Math.cos(a);e.dy=Math.sin(a)}
-  if(d<(e.big?24:20)&&S.inv<=0&&S.shield<=0){S.hp--;S.inv=1.2;move(p,-ax/d*22,-ay/d*22);if(S.hp<=0)S.state='lose';else fire('hit')}
+  if(d<(e.big?24:20)&&S.inv<=0&&S.shield<=0){S.hp--;if(S.stat)S.stat.hits++;S.inv=1.2;move(p,-ax/d*22,-ay/d*22);if(S.hp<=0)S.state='lose';else fire('hit')}
  }
  const near=o=>Math.hypot(o.x-p.x,o.y-p.y)<20;
  S.items=S.items.filter(it=>near(it)?(S.got++,fire('collect'),false):true);
  S.keys=S.keys.filter(k=>near(k)?(fire('collect'),false):true);
- S.pups=S.pups.filter(u=>{if(!near(u))return true;setTimeout(()=>fire('powerup'),0);if(u.type==='hearts')S.hp=Math.min(S.hp+1,S.maxhp+2);else if(u.type==='boots')S.boost=6;else S.shield=6;return false});
+ let grabbed=0;S.pups=S.pups.filter(u=>{if(!near(u))return true;grabbed++;if(u.type==='hearts')S.hp=Math.min(S.hp+1,S.maxhp+2);else if(u.type==='boots')S.boost=6;else S.shield=6;return false});for(let i=0;i<grabbed;i++)fire('powerup');
  if(S.need&&S.got>=S.need)S.state='win';
  if(S.exit&&near(S.exit)&&!S.exitLocked)S.state='win';
  if(S.r.goal==='survive'){if(S.t>=S.survive)S.state='win';S.spawnT-=dt;if(S.spawnT<=0&&S.r.enemy!=='none'){S.spawnT=8;let pos,k=0;do{pos={x:(1+ri(S.cols-2))*TS+16,y:(1+ri(S.rows-2))*TS+16};k++}while(k<60&&(solid(pos.x,pos.y)||Math.hypot(pos.x-p.x,pos.y-p.y)<220));S.enemies.push(enemy(S.r.enemy,pos))}}
+}
+
+// ---------- playtest bot ----------
+// Plays a level in fast-forward (no drawing) so we know it can be beaten and how hard it is.
+const BOT_DIRS=[[1,0],[-1,0],[0,1],[0,-1],[.7071,.7071],[.7071,-.7071],[-.7071,.7071],[-.7071,-.7071]];
+function botTargets(){
+ const t=[...S.items,...S.keys];
+ if(S.exit&&!S.exitLocked&&!S.items.length)t.push(S.exit);
+ if(S.hp<=1)t.push(...S.pups.filter(u=>u.type==='hearts'));
+ return t;
+}
+function botStep(b){
+ const p=S.p,tx=Math.floor(p.x/TS),ty=Math.floor(p.y/TS);
+ const danger=S.enemies.filter(e=>Math.hypot(e.x-p.x,e.y-p.y)<(e.big?80:70));
+ const minD=(x,y)=>S.enemies.reduce((m,e)=>Math.min(m,Math.hypot(e.x-x,e.y-y)),1e9);
+ let want=null;
+ const targets=S.r.goal==='survive'?[]:botTargets();
+ if(targets.length){
+  if(--b.repath<=0||!b.path){b.repath=3;
+   const bad=new Set();for(const e of S.enemies)if(S.inv<=0&&S.shield<=0){const ex=Math.floor(e.x/TS),ey=Math.floor(e.y/TS);for(const [dx,dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]])bad.add((ex+dx)+','+(ey+dy))}
+   const goal=new Set(targets.map(o=>Math.floor(o.x/TS)+','+Math.floor(o.y/TS)));
+   const search=avoid=>{const prev=new Map([[tx+','+ty,null]]),q=[[tx,ty]];
+    for(let h=0;h<q.length;h++){const [x,y]=q[h],k=x+','+y;if(goal.has(k)&&h){const path=[];let c=k;while(c&&c!==tx+','+ty){path.push(c);c=prev.get(c)}return path.reverse()}
+     for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy,nk=nx+','+ny;if(S.grid[ny]&&S.grid[ny][nx]===0&&!prev.has(nk)&&!(avoid&&bad.has(nk)&&!goal.has(nk))){prev.set(nk,k);q.push([nx,ny])}}}
+    return goal.has(tx+','+ty)?[tx+','+ty]:null};
+   b.path=search(true)||search(false);
+  }
+  if(b.path&&b.path.length){const [cx,cy]=b.path[0].split(',').map(Number),gx=cx*TS+16,gy=cy*TS+16;
+   if(Math.hypot(gx-p.x,gy-p.y)<6){b.path.shift();b.repath=0}
+   const d=Math.hypot(gx-p.x,gy-p.y)||1;want=[(gx-p.x)/d,(gy-p.y)/d]}
+ }
+ // dodge: when something is close, take the direction that stays safest (preferring the way we want to go)
+ if(danger.length&&S.shield<=0&&S.inv<=0||S.r.goal==='survive'){
+  let best=null,bs=-1e9;
+  for(const [dx,dy] of BOT_DIRS){const nx=p.x+dx*24,ny=p.y+dy*24;if(blocked(nx,ny,p.r))continue;
+   let sc=Math.min(minD(nx,ny),160);if(want)sc+=30*(dx*want[0]+dy*want[1]);
+   if(S.r.goal==='survive'){let open=0;for(const [ax,ay] of BOT_DIRS)if(!blocked(nx+ax*40,ny+ay*40,p.r))open++;sc+=open*4}
+   if(sc>bs){bs=sc;best=[dx,dy]}}
+  if(best&&(!want||minD(p.x,p.y)<62||S.r.goal==='survive'))want=best;
+ }
+ // unstick
+ if(Math.hypot(p.x-b.lx,p.y-b.ly)<.5)b.still+=1;else b.still=0;b.lx=p.x;b.ly=p.y;
+ if(b.still>20){b.wig=8;b.still=0;b.path=null;b.wd=BOT_DIRS[Math.random()*8|0]}
+ if(b.wig>0){b.wig--;want=b.wd}
+ for(const k of ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'])keys[k]=false;
+ if(want){if(want[0]>.3)keys.ArrowRight=true;if(want[0]<-.3)keys.ArrowLeft=true;if(want[1]>.3)keys.ArrowDown=true;if(want[1]<-.3)keys.ArrowUp=true}
+}
+function playtest(r,maxT){
+ // -> {win, lose, time, hits, hp, acts, timeout}
+ const keep=S,saved={...keys};for(const k in keys)keys[k]=false;
+ build(r);const s=S;s.stat={hits:0,acts:0};const b={repath:0,path:null,lx:0,ly:0,still:0,wig:0};
+ const cap=maxT||(r.goal==='survive'?s.survive+2:150),dt=1/30;
+ try{while(s.state==='play'&&s.t<cap){botStep(b);update(dt)}}
+ finally{const out={win:s.state==='win',lose:s.state==='lose',timeout:s.state==='play',time:s.t,hits:s.stat.hits,maxhp:s.maxhp,acts:s.stat.acts};
+  S=keep;for(const k in keys)keys[k]=false;Object.assign(keys,saved);playtest.last=out}
+ return playtest.last;
+}
+const HARD_TARGET={easy:.1,normal:.3,hard:.5};
+async function bestLevel(r,n,onStep){
+ // Try n different levels for this recipe; keep one the bot can beat whose hardness is closest to what was asked.
+ const target=HARD_TARGET[r.difficulty]??.3,cands=[];
+ for(let i=0;i<n;i++){
+  const seed=(Math.random()*2**31)|0,runs=[playtest({...r,seed}),playtest({...r,seed})];
+  const wins=runs.filter(x=>x.win).length,hard=runs.reduce((a,x)=>a+(x.win?x.hits/x.maxhp:1),0)/runs.length;
+  cands.push({seed,runs,wins,hard,score:(wins?0:10)+(2-wins)*.2+Math.abs(hard-target)});
+  if(onStep)await onStep(i+1,n);
+ }
+ cands.sort((a,b)=>a.score-b.score);return {best:cands[0],tried:n};
+}
+function playReport(res,r){
+ const c=res.best,w=c.runs.find(x=>x.win)||c.runs[0],probs=[];
+ if(!c.wins)probs.push(c.runs.some(x=>x.timeout)?"the bot ran out of time, so it may be impossible to finish":"the bot lost every try, so it may be too hard");
+ for(const [i,x] of (r.rules||[]).entries())if(c.wins&&x.trig==='score'&&!c.runs.some(q=>q.win&&q.acts))probs.push(`rule ${i+1} never happened while playing`);
+ const hp=Math.max(0,w.maxhp-w.hits);
+ return {probs,text:c.wins?`Playtested ${res.tried} version${res.tried>1?'s':''} and kept the best: the bot beat it in ${Math.round(w.time)} s with ${hp} of ${w.maxhp} hearts left.`:`Playtested ${res.tried} version${res.tried>1?'s':''}, but the bot couldn't beat any of them.`};
 }
 function txt(s,x,y,size,col,font){ctx.font=font||EF(size);ctx.fillStyle=col||'#fff';ctx.fillText(s,x,y)}
 function draw(){
