@@ -1,8 +1,19 @@
 // The Game AI model in plain JavaScript: same math as gameai/model.py, with a KV cache
 // so each new token only costs one step. Works in browsers and Node.
 function createAI(manifest, buffer) {
-  const f32 = new Float32Array(buffer), W = {};
-  for (const t of manifest.tensors) W[t.name] = f32.subarray(t.offset, t.offset + t.size);
+  const W = {};
+  if (manifest.format === 'q8') {  // compact file: 1 byte per weight + a scale per row; turn back into normal numbers
+    const f32 = new Float32Array(buffer, 0, manifest.f32_count), i8 = new Int8Array(buffer, manifest.f32_count * 4);
+    for (const t of manifest.tensors) {
+      if (t.q8 == null) { W[t.name] = f32.subarray(t.offset, t.offset + t.size); continue; }
+      const cols = t.shape[1], o = new Float32Array(t.size);
+      for (let r = 0; r < t.shape[0]; r++) { const s = f32[t.scale + r], b = r * cols; for (let k = 0; k < cols; k++) o[b + k] = i8[t.q8 + b + k] * s; }
+      W[t.name] = o;
+    }
+  } else {
+    const f32 = new Float32Array(buffer);
+    for (const t of manifest.tensors) W[t.name] = f32.subarray(t.offset, t.offset + t.size);
+  }
   const c = manifest.config, d = c.d_model, H = c.n_head, KV = c.n_kv_head, hd = d / H, rep = H / KV, L = c.n_layer;
   const V = c.vocab_size, hid = W['blocks.0.mlp.gate.weight'].length / d, tk = manifest.tokenizer;
   const inv = Float32Array.from({ length: hd / 2 }, (_, i) => 1 / Math.pow(10000, (2 * i) / hd));

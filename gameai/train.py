@@ -88,13 +88,22 @@ def wsd(step, total, warm=0.05, decay=0.2):
     return max(0.05, (total - step) / d)
 
 
+# Bigger models learn best with more steps, bigger batches and gentler learning rates.
+SIZE_DEFAULTS = {  # size: (steps, batch, AdamW lr, Muon lr)
+    "tiny": (3000, 128, 3e-3, 0.02),
+    "small": (4000, 128, 3e-3, 0.02),
+    "base": (6000, 256, 2e-3, 0.015),
+    "large": (8000, 256, 1.5e-3, 0.01),
+}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="small")
-    ap.add_argument("--steps", type=int, default=4000)
-    ap.add_argument("--batch", type=int, default=128)
-    ap.add_argument("--lr", type=float, default=3e-3, help="AdamW learning rate")
-    ap.add_argument("--muon-lr", type=float, default=0.02)
+    ap.add_argument("--steps", type=int, default=None, help="default depends on --size (see SIZE_DEFAULTS)")
+    ap.add_argument("--batch", type=int, default=None)
+    ap.add_argument("--lr", type=float, default=None, help="AdamW learning rate")
+    ap.add_argument("--muon-lr", type=float, default=None)
     ap.add_argument("--no-muon", action="store_true")
     ap.add_argument("--compile", action="store_true", help="torch.compile (Linux/WSL; usually unavailable on native Windows)")
     ap.add_argument("--eval-every", type=int, default=250)
@@ -131,6 +140,8 @@ def main():
     else:
         model = GameAI(make_config(a.size, tok.vocab_size, tok.max_len)).to(device)
     n_params = model.num_params()
+    d = SIZE_DEFAULTS.get(a.size, SIZE_DEFAULTS["small"])
+    a.steps = a.steps or d[0]; a.batch = a.batch or d[1]; a.lr = a.lr or d[2]; a.muon_lr = a.muon_lr or d[3]
     if a.no_muon:
         opts = [torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.01)]
     else:

@@ -63,6 +63,7 @@ def run_job(args, kind="job"):
     j = STATE["job"]
     j.update(stopped=False, kind=kind, running=True, stage="Starting", step=0, total=0, loss=None, evals=[], log=[], ok=None, started=time.time())
     env = dict(os.environ, GAMEAI_PROGRESS="1", PYTHONUNBUFFERED="1")
+    if os.name != "nt": env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")  # GPU memory wastes less space when the teacher shares it
     p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
     STATE["proc"] = p
@@ -116,7 +117,7 @@ class H(BaseHTTPRequestHandler):
         if path == "/api/model":
             if not STATE["model"]: return self.send(409, {"error": "no model yet"})
             from .export_web import single_file
-            return self.send(200, single_file())
+            return self.send(200, single_file(compact=self.client_address[0] != "127.0.0.1"))  # your PC: full precision; Chromebook over Wi-Fi: compact
         if path == "/api/learnhist":
             rows = [json.loads(l) for l in open("learn/history.jsonl")] if os.path.exists("learn/history.jsonl") else []
             return self.send(200, rows[-300:])

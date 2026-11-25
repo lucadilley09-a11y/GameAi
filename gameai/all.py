@@ -16,13 +16,13 @@ def step(title, args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="small")
-    ap.add_argument("--steps", default="4000")
+    ap.add_argument("--steps", default=None, help="default depends on the size")
     a = ap.parse_args()
     if not os.path.exists("data/manifest.json"):
         step("1/4  Making training data", ["gameai.datagen"])
     else:
         print("1/4  Training data already exists, reusing it")
-    step(f"2/4  Training the AI from scratch ({a.size})", ["gameai.train", "--size", a.size, "--steps", a.steps])
+    step(f"2/4  Training the AI from scratch ({a.size})", ["gameai.train", "--size", a.size] + (["--steps", a.steps] if a.steps else []))
     step("3/4  Testing it", ["gameai.bench"])
     if os.path.exists("models/current.pt"):
         step("4/4  Making the browser/Chromebook version", ["gameai.export_onnx"])

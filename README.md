@@ -62,6 +62,14 @@ teacher (about 3 GB, no account). Examples are saved as they're written, so you 
 **Learning while it writes:** `/learn on` runs the teacher at the same time. Every learning round learns from all teacher examples so far, so the AI improves as the
 teacher goes. The graph shows how many it has written. The test gains a "real talk" score: how well your AI understands natural wording. Your AI never needs the teacher to run.
 
+## Bigger AI
+
+`/train base` trains a 12.7 million parameter AI (about 3x the default 4.5 million), `/train large` 35 million.
+Each size has its own training settings (more steps, bigger batches, gentler learning rates for bigger ones).
+Always-on learning keeps whatever size is in use. The Chromebook file stores the AI compactly
+(1 byte per weight plus a scale per row, about 4x smaller, same answers on 397 of 400 test requests);
+the PC keeps full precision.
+
 ## Playtest bot
 
 Every new game is played by a bot in fast-forward before you see it (a few milliseconds per try).
