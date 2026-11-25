@@ -166,7 +166,7 @@ async function showLearning(statusLine){
  const rows=await fetch('api/learnhist').then(r=>r.json()).catch(()=>[]);
  if(!rows.length)return false;
  const t0=rows[0].time,hrs=(rows.at(-1).time-t0)/3600,gain=(rows.at(-1).exact-rows[0].exact)*100,ups=rows.filter((r,i)=>i&&r.promoted).length;
- $('gtitle').innerHTML='How smart your AI is';
+ $('graph').style.display=''; $('gtitle').innerHTML='How smart your AI is';
  drawGraph(rows.map(r=>({x:(r.time-t0)/3600,y:r.exact,y2:r.natural??r.typo,dot:r.promoted})),{x0:'start',x1:hrs<1?Math.round(hrs*60)+' min of learning':hrs.toFixed(1)+' h of learning'});
  $('ptext').innerHTML=`Orange line: how often it gets a game idea exactly right. Dashed: the same with natural, real-person wording (or typos, before the teacher has run). Each dot: it got smarter and switched to the new version.<br>So far: ${gain>=0?'+':''}${gain.toFixed(2)} points better, ${ups} upgrade${ups===1?'':'s'} in ${rows.length-1} round${rows.length===2?'':'s'}.${statusLine?'<br>'+statusLine:''}`;
  const tn=rows.at(-1).teacher;if(tn)$('ptext').innerHTML+=`<br>The teacher has written ${tn} real-person examples so far, and each round learns from all of them.`;
@@ -178,12 +178,20 @@ async function watch(){
   const j=await fetch('api/progress').then(r=>r.json()).catch(()=>null);if(!j)break;
   const pct=j.total?Math.round(j.step/j.total*100):0,st=j.stage||'',nice=/practice|training data/i.test(st)?'writing new practice questions':/learning|Training/.test(st)?`studying (${pct}%)`:/test/i.test(st)?'taking its test':/browser/i.test(st)?'packing up':st?'getting ready':'starting',rd=(st.match(/Round (\d+)/)||[])[1],now=`Right now: ${rd?'round '+rd+', ':''}${nice}`;
   spin(j.kind==='teacher'?'The teacher is writing examples':j.kind==='learn'?'Learning':'Training');
-  if(j.kind==='teacher'){$('gtitle').textContent='The teacher is writing examples';$('graph').innerHTML='';$('ptext').innerHTML=`${j.step} of ${j.total} kept${j.loss!=null?` · ${Math.round(j.loss*100)}% passed the self-check`:''}<br><span class="d">${esc((j.log.filter(l=>l.startsWith('kept')).at(-1)||j.log.at(-1)||'starting…').replace(/^kept[^e]*e\.g\. /,'latest: '))}</span>`}
-  else if(j.kind==='learn'){if(!await showLearning(now)){$('gtitle').textContent='Always-on learning';$('ptext').innerHTML=now}}
+  if(j.kind==='learn'){$('graph').style.display='';if(!await showLearning(now)){$('gtitle').textContent='Always-on learning';$('ptext').innerHTML=now}}
   else{
-   $('gtitle').innerHTML='Training a new AI from scratch';
-   drawGraph(j.evals.map(e=>({x:e.step,y:e.exact,y2:e.fields})),{x0:'step 0',x1:'step '+(j.evals.at(-1)||{step:0}).step});
-   $('ptext').innerHTML=`Orange line: how often it gets a practice game idea exactly right. Dashed: how often each single part is right.<br>${now}`;
+   // text bar for training, testing and the teacher: overall percent done and time left
+   $('graph').style.display='none';$('graph').innerHTML='';
+   const stg=(st.match(/^(\d)\/4/)||[])[1],frac=j.total?j.step/j.total:0;
+   let p,label;
+   if(j.kind==='teacher'){p=frac;label=`The teacher is writing examples: ${j.step} of ${j.total} kept${j.loss!=null?` (${Math.round(j.loss*100)}% pass its self-check)`:''}`}
+   else if(stg){p=[0,0,.05+.85*frac,.92,.98][+stg];label=['','Making practice data','Training the AI','Testing it','Packing it up'][+stg]}
+   else{p=j.total?frac:null;label=/test/i.test(st)?'Testing it':st||'Starting'}
+   if(j.running&&j.total&&j.step&&(watch.k!==j.kind+st||!watch.t0)){watch.k=j.kind+st;watch.t0=Date.now();watch.s0=j.step}
+   let left='';if(watch.t0&&j.step>watch.s0&&j.total){const rate=(j.step-watch.s0)/((Date.now()-watch.t0)/1000),sec=(j.total-j.step)/rate;if(isFinite(sec)&&sec>0)left=sec<90?` · about ${Math.round(sec)} s left`:` · about ${Math.round(sec/60)} min left`+(stg?' for this part':'')}
+   const W=32,full=p==null?0:Math.round(Math.min(1,p)*W),bar=p==null?'░'.repeat(W):'█'.repeat(full)+'░'.repeat(W-full);
+   $('gtitle').textContent=j.kind==='teacher'?'Teacher':j.kind==='job'&&stg?'Training a new AI from scratch':'Working';
+   $('ptext').innerHTML=`<span class="k">${bar}</span>  <span class="u">${p==null?'…':Math.floor(Math.min(1,p)*100)+'%'}</span>${esc(left)}<br>${esc(label)}${j.kind==='teacher'?`<br><span class="d">${esc((j.log.filter(l=>l.startsWith('kept')).at(-1)||'').replace(/^kept[^e]*e\.g\. /,'latest: '))}</span>`:''}`;
   }
   if(!j.running){watching=false;unspin();
    if(j.kind!=='learn')$('prog').classList.remove('on');
@@ -296,7 +304,7 @@ function command(line){
    const rs=store.get('gameai.ratings',[]);rs.push({...lastGame,rating:+m[1],note:m[2]});store.set('gameai.ratings',rs);say(`Saved. ${rs.length} rating${rs.length>1?'s':''} so far.`);break}
   case '/train':if(needApp())break;post('api/train',{size:arg||'small'}).then(r=>{if(!r.ok)say(esc(r.error||'Could not start.'),'w');else{say(`Training a ${esc(arg||'small')} AI from scratch. You can keep making games meanwhile.`);watch()}});break;
   case '/learn':if(needApp())break;post('api/learn',{on:arg!=='off'}).then(r=>{if(!r.ok)say(esc(r.error),'w');else if(r.stopping)say('Stopping after the current round finishes.','d');else{say('Always-on learning started. A teacher AI writes new real-person examples at the same time, and each round learns from all of them. Keep making games; it switches to each better version by itself.');watch()}});break;
-  case '/graph':if(needApp())break;$('prog').classList.add('on');showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
+  case '/graph':if(needApp())break;$('prog').classList.add('on');$('graph').style.display='';showLearning('').then(ok=>{if(!ok){$('prog').classList.remove('on');say('No learning history yet. Type /learn on.','d')}});break;
   case '/test':if(needApp())break;post('api/test').then(r=>{if(!r.ok)say(esc(r.error),'w');else watch()});break;
   case '/runs':if(needApp())break;fetch('api/runs').then(r=>r.json()).then(rs=>say(rs.length?'<table>'+rs.map(r=>`<tr><td class="d">${esc(r.id)}</td><td>${r.exact!=null?(r.exact*100).toFixed(2)+'%':''}</td><td class="d">${r.promoted?'promoted':''}</td></tr>`).join('')+'</table>':'No runs yet.'));break;
   case '/save':if(!lastGame){say('Make a game first.','w');break}
