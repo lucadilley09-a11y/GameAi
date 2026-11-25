@@ -11,11 +11,15 @@ ALLOWED = {"apache-2.0", "mit"}
 
 # role: "base" candidates are fine-tuned; "teacher" ones are measured but not trained (they don't fit QLoRA on 8 GB)
 CANDIDATES = [
-    {"key": "qwen3.5-2b", "repos": ["Qwen/Qwen3.5-2B"], "role": "base (preferred start)", "train": True},
+    # precision: how it's trained. Unsloth's Qwen3.5 guide advises against 4-bit QLoRA for Qwen3.5 (larger quantization
+    # differences than usual), so the 2B trains with 16-bit LoRA, which fits on 8 GB; the 4B doesn't fit in 16-bit, so it
+    # can only be tested with QLoRA, and that's noted in its results.
+    {"key": "qwen3.5-2b", "repos": ["Qwen/Qwen3.5-2B"], "role": "base (preferred start)", "train": True, "precision": "bf16"},
     {"key": "minicpm5-2b", "repos": ["openbmb/MiniCPM5-2B"], "role": "base", "train": True},
     {"key": "gemma-4-e2b", "repos": ["google/gemma-4-E2B-it", "google/gemma-4-E2B"], "role": "base", "train": True},
     {"key": "granite-4.2-3b", "repos": ["ibm-granite/granite-4.2-3b"], "role": "coding teacher, or base if far ahead", "train": True},
-    {"key": "qwen3.5-4b", "repos": ["Qwen/Qwen3.5-4B"], "role": "challenger", "train": True},
+    {"key": "qwen3.5-4b", "repos": ["Qwen/Qwen3.5-4B"], "role": "challenger", "train": True, "precision": "qlora",
+     "note": "QLoRA isn't recommended for Qwen3.5 and 16-bit LoRA doesn't fit on 8 GB: its training result may understate it"},
     {"key": "gemma-4-e4b", "repos": ["google/gemma-4-E4B-it", "google/gemma-4-E4B"], "role": "teacher or reference (QLoRA needs about 9-10 GB)", "train": False},
 ]
 WEIGHT_FILES = ("*.safetensors", "*.json", "*.txt", "*.model", "*.jinja", "tokenizer*", "LICENSE*", "*.tiktoken")

@@ -48,10 +48,12 @@ def load(hf_dir, four_bit=True):
     return model, tok
 
 
-def add_lora(model):
+def add_lora(model, four_bit=True):
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     import torch
-    if torch.cuda.is_available(): model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    if torch.cuda.is_available() and four_bit: model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    elif torch.cuda.is_available():  # 16-bit LoRA: save memory by recomputing activations instead of storing them
+        model.gradient_checkpointing_enable(); model.enable_input_require_grads()
     cfg = LoraConfig(target_modules="all-linear", exclude_modules=EXCLUDE, task_type="CAUSAL_LM", **LORA)
     return get_peft_model(model, cfg)
 
@@ -146,7 +148,7 @@ def memory_probe(model, tok, device, lengths=(512, 1024, 2048, 4096, 8192), batc
     return res
 
 
-def run(hf_dir, minutes=TRAIN_MINUTES, seed=0, n_val_loss=200, n_val_exact=60, adapter_out=None):
+def run(hf_dir, minutes=TRAIN_MINUTES, seed=0, n_val_loss=200, n_val_exact=60, adapter_out=None, precision="qlora"):
     import torch
     from .tasks import RECIPE_SYSTEM, recipe_items
     from ..guard import filter_training
@@ -154,9 +156,10 @@ def run(hf_dir, minutes=TRAIN_MINUTES, seed=0, n_val_loss=200, n_val_exact=60, a
     rng = random.Random(seed); torch.manual_seed(seed)
     if cuda: _cap_gpu(torch); torch.cuda.reset_peak_memory_stats()
     t0 = time.time()
-    model, tok = load(hf_dir)
-    res = {"load_s": round(time.time() - t0, 1), "four_bit": cuda}
-    model = add_lora(model)
+    four = cuda and precision != "bf16"
+    model, tok = load(hf_dir, four_bit=four)
+    res = {"load_s": round(time.time() - t0, 1), "precision": "4-bit QLoRA" if four else "16-bit LoRA" if cuda else "CPU"}
+    model = add_lora(model, four_bit=four)
     res["trainable_params_m"] = round(sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6, 2)
     if cuda:
         say("  measuring memory at different context lengths and batch sizes...")

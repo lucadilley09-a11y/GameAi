@@ -28,10 +28,16 @@ def chat_rows(skill):
     raise KeyError(f"no training data defined for skill {skill!r} yet")
 
 
-def general_rows():
+SELF_ANSWERS = os.path.join("data", "splits", "general", "self_answers.jsonl")
+
+
+def general_rows(source="data"):
+    """the general rows mixed into every batch: the datasets' own answers ("data"), or the base model's own answers to
+    the same questions ("self", endogenous replay: research found it protects general ability best)"""
     from . import splits
     out = []
-    for r in splits.rows("general", "train"):
+    rows = splits.read(SELF_ANSWERS) if source == "self" else splits.rows("general", "train")
+    for r in rows:
         if "messages" in r: out.append({"messages": r["messages"]})
         elif "prompt" in r and "answer" in r: out.append({"system": r.get("system", ""), "prompt": r["prompt"], "answer": r["answer"]})
     return out
@@ -102,6 +108,7 @@ def main():
     ap.add_argument("--skill", required=True); ap.add_argument("--base", required=True, help="folder with the base model (Hugging Face format)")
     ap.add_argument("--minutes", type=float, default=120); ap.add_argument("--general", type=float, default=0.3)
     ap.add_argument("--batch", type=int, default=8); ap.add_argument("--accum", type=int, default=2); ap.add_argument("--lr", type=float, default=2e-4)
+    ap.add_argument("--general-source", choices=["data", "self"], default="data")
     ap.add_argument("--ckpt-minutes", type=float, default=10); ap.add_argument("--resume", action="store_true"); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     import torch
@@ -127,7 +134,7 @@ def main():
     else:
         model = add_lora(model)
     skill_rows = filter_training(chat_rows(a.skill), label=a.skill)
-    gen_rows = filter_training(general_rows(), label="general") if a.general > 0 else []
+    gen_rows = filter_training(general_rows(a.general_source), label="general") if a.general > 0 else []
     if a.general > 0 and not gen_rows:
         print("Note: the general collection is still empty, so this run can't protect general ability yet.", flush=True)
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=0.0)
@@ -157,7 +164,7 @@ def main():
     model.save_pretrained(path)
     rev = (json.load(open(os.path.join(a.base, "provenance.json"))) if os.path.exists(os.path.join(a.base, "provenance.json")) else {}).get("revision")
     adapters.finish(a.skill, v, base=os.path.basename(os.path.normpath(a.base)), base_revision=rev, scores=scores,
-                    steps=step, general_share=a.general, minutes=round((time.time() - t0) / 60, 1))
+                    steps=step, general_share=a.general, general_source=a.general_source, minutes=round((time.time() - t0) / 60, 1))
     ok, why = adapters.decide(a.skill, v)
     print(f"{a.skill} v{v}: {scores} -> {'now in use' if ok else 'kept, not used'} ({why})", flush=True)
     import shutil

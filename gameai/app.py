@@ -129,6 +129,18 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path = unquote(self.path.split("?")[0])
         if path == "/": return self.send(200, page(), "text/html; charset=utf-8")
+        if path.startswith("/kit/") and re.fullmatch(r"/kit/[a-z0-9_]+", path):  # play a GameKit example game
+            ex = os.path.join(os.path.dirname(__file__), "kit", "examples", path[5:] + ".js")
+            if not os.path.exists(ex): return self.send(404, "no such example")
+            kit = open(os.path.join(os.path.dirname(__file__), "kit", "gamekit.js"), encoding="utf-8").read()
+            html = ("<!doctype html><meta charset=utf-8><title>" + path[5:] + "</title><style>body{margin:0;background:#111;display:grid;place-items:center;height:100vh}"
+                    "canvas{image-rendering:pixelated;max-width:100vw;max-height:100vh}</style><canvas id=c></canvas><script>" + kit + "\n"
+                    + open(ex, encoding="utf-8").read() + "\nconst cv=document.getElementById('c'),g=build(cv,(Math.random()*1e9)|0);cv.width=g.o.width;cv.height=g.o.height;"
+                    "if(location.search.includes('play'))g.start();else(function loop(){g.draw();if(g.state==='title')requestAnimationFrame(loop)})();</script>")
+            return self.send(200, html, "text/html; charset=utf-8")
+        if path == "/api/kit":
+            d = os.path.join(os.path.dirname(__file__), "kit", "examples")
+            return self.send(200, {"examples": sorted(f[:-3] for f in os.listdir(d) if f.endswith(".js"))})
         if path == "/api/status":
             STATE["seen"] = time.time()  # the PC window or your Chromebook is using the app
             return self.send(200, status())

@@ -12,14 +12,15 @@ from .common import OUT, say
 
 RESPONSIVE_S = 3.0
 WEIGHTS = {  # what matters most for this AI: reading game requests after training, then learning speed, coding, the rest
-    "game requests after 30 min training": 0.35,
+    "game requests after 30 min training": 0.30,
     "learning speed (vs the best candidate)": 0.15,
     "JavaScript": 0.15,
-    "instructions": 0.10,
-    "knowledge and reasoning": 0.10,
+    "general ability kept after training": 0.10,  # research: models forget very differently when fine-tuned
+    "instructions": 0.08,
+    "knowledge and reasoning": 0.08,
     "languages": 0.05,
     "interfaces (HTML)": 0.05,
-    "pictures": 0.05,
+    "pictures": 0.04,
 }
 TIE = 0.02  # closer than this: the faster, smaller one wins
 CHOICE = os.path.join("models", "base_choice.json")
@@ -57,7 +58,8 @@ def choose(results=None):
                  "JavaScript": _g(t, "JavaScript", "passes_sandbox") or 0, "instructions": _g(t, "instructions", "follows_instructions") or 0,
                  "knowledge and reasoning": _g(t, "knowledge and reasoning", "knowledge_and_reasoning") or 0,
                  "languages": _g(t, "languages", "languages") or 0, "interfaces (HTML)": _g(t, "interfaces (HTML)", "ui_html") or 0,
-                 "pictures": _g(t, "pictures", "vision") or 0}
+                 "pictures": _g(t, "pictures", "vision") or 0,
+                 "general ability kept after training": _g(r, "adapter_in_runtime", "general_kept") or 0}
         rows.append({"key": k, "score": round(sum(WEIGHTS[n] * v for n, v in parts.items()), 4), "parts": parts,
                      "speed_s": _g(t, "game requests (thinking off)", "answer_s_median") or 99, "q4_gb": r.get("q4_gb") or 99, "record": r["candidate"]})
     if not rows: return {"winner": None, "why_not": why_not, "rule": WEIGHTS}

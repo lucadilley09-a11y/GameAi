@@ -4,7 +4,7 @@ onnx
 onnxscript
 onnxruntime
 rich
-transformers
+transformers>=5
 accelerate
 bitsandbytes
 mini-racer

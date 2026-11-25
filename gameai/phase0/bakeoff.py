@@ -102,7 +102,8 @@ def one(rec, minutes, log=say):
         import torch
         if cand["train"] and torch.cuda.is_available():
             stage(f"{key}: QLoRA training test ({minutes} minutes)")
-            try: res["qlora"] = __import__("gameai.phase0.qlora", fromlist=["run"]).run(hf, minutes=minutes, adapter_out=os.path.join(work, "adapter"))
+            try: res["qlora"] = __import__("gameai.phase0.qlora", fromlist=["run"]).run(hf, minutes=minutes, adapter_out=os.path.join(work, "adapter"),
+                                                                                         precision=cand.get("precision", "qlora"))
             except Exception as e: res["qlora"] = {"failed": str(e)[:500]}
         elif not cand["train"]:
             res["qlora"] = {"skipped": "measured as a teacher or reference only (QLoRA doesn't fit on 8 GB)"}
@@ -125,6 +126,14 @@ def one(rec, minutes, log=say):
                     think = thinking_supported(hf)
                     res["adapter_in_runtime"] = {"loads": True, "adapter_mb": round(os.path.getsize(lg) / 2**20, 1),
                                                  **T.test_recipes(srv.chat, T.recipe_items()[:60], thinking=False if think else None)}
+                    # does it keep its general abilities after training? (research: models differ a lot here)
+                    before = res["tests"]
+                    ins = T.test_instructions(srv.chat, thinking=False if think else None)["follows_instructions"]
+                    kno = T.test_knowledge(srv.chat, thinking=False if think else None)["knowledge_and_reasoning"]
+                    b_ins = (before.get("instructions") or {}).get("follows_instructions"); b_kno = (before.get("knowledge and reasoning") or {}).get("knowledge_and_reasoning")
+                    res["adapter_in_runtime"]["general_after_training"] = {"instructions": ins, "knowledge": kno}
+                    if b_ins and b_kno:
+                        res["adapter_in_runtime"]["general_kept"] = round(min(1.0, (ins + kno) / max(1e-9, b_ins + b_kno)), 4)
             except Exception as e:
                 res["adapter_in_runtime"] = {"loads": False, "why": str(e)[:400]}
             log("   ", res["adapter_in_runtime"])

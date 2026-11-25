@@ -36,7 +36,7 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     ("bakeoff", "testing the candidate AI models (hours)", "bakeoff", ["gameai.autopilot", "run", "bakeoff"]),
     ("choose", "choosing the best model", None, ["gameai.autopilot", "run", "choose"]),
     ("install", "installing the chosen model", None, ["gameai.autopilot", "run", "install"]),
-    ("mix", "testing how much everyday data to mix in (about 1.5 hours)", None, ["gameai.autopilot", "run", "mix"]),
+    ("mix", "testing how much everyday data to mix in (about 2 hours)", None, ["gameai.autopilot", "run", "mix"]),
     ("adapter", "training the game-design skill (about 2 hours)", None, ["gameai.autopilot", "run", "adapter"]),
     ("release", "making and checking the first release", None, ["gameai.autopilot", "run", "release"]),
 ]
@@ -163,8 +163,8 @@ def run(sid):
     elif sid == "mix":
         mix_sweep()
     elif sid == "adapter":
-        share = (load().get("mix") or {}).get("best", 0.3)
-        _train("game_design", 120, share)
+        best = (load().get("mix") or {}).get("best_arm") or {"share": 0.3, "source": "data"}
+        _train("game_design", 120, best["share"], best["source"])
     elif sid == "release":
         from . import release
         a = release.build("A"); release.score(a)
@@ -176,30 +176,56 @@ def run(sid):
         raise SystemExit(f"unknown step {sid}")
 
 
-def _train(skill, minutes, share):
+def _train(skill, minutes, share, source="data"):
     import subprocess
     from . import registry
     hf = registry.load()["entries"]["core_hf"]["path"]
-    r = subprocess.run([sys.executable, "-u", "-m", "gameai.lora_train", "--skill", skill, "--base", hf, "--minutes", str(minutes), "--general", str(share)]
+    r = subprocess.run([sys.executable, "-u", "-m", "gameai.lora_train", "--skill", skill, "--base", hf, "--minutes", str(minutes), "--general", str(share),
+                        "--general-source", source]
                        + (["--resume"] if os.path.exists(os.path.join("models", "adapters", skill, "training", "trainer_state.pt")) else []))
     if r.returncode: raise SystemExit(f"training {skill} failed")
 
 
+ARMS = [("data", 0.2), ("data", 0.3), ("data", 0.4), ("data", 0.5), ("self", 0.3)]
+
+
+def make_self_answers(n=2000):
+    """The base model's own answers to n everyday questions from the general training split (endogenous replay)."""
+    from .lora_train import SELF_ANSWERS
+    from . import registry, splits
+    from .phase0 import runtime as R
+    if os.path.exists(SELF_ANSWERS) and sum(1 for _ in open(SELF_ANSWERS, encoding="utf-8")) >= n * 0.9: return
+    rows = [r for r in splits.rows("general", "train") if r.get("messages")][:n]
+    q4 = registry.load()["entries"]["core"]["path"]
+    with R.Server(q4) as srv, open(SELF_ANSWERS, "w", encoding="utf-8") as f:
+        for i, r in enumerate(rows):
+            msgs = [m for m in r["messages"] if m["role"] != "assistant"][:2]
+            if not any(m["role"] == "user" for m in msgs): continue
+            msgs = msgs[:[k for k, m in enumerate(msgs) if m["role"] == "user"][0] + 1]
+            try: text, _ = srv.chat(msgs, max_tokens=400, thinking=False, temperature=0.7)
+            except Exception: continue
+            if text.strip(): f.write(json.dumps({"messages": msgs + [{"role": "assistant", "content": text}]}, ensure_ascii=False) + "\n")
+            if i % 100 == 0: print(f"  base model answered {i} of {len(rows)} everyday questions", flush=True)
+
+
 def mix_sweep():
-    """The plan: short runs at 20, 30, 40 and 50% general data, compared on validation; the best is used for the real run."""
+    """The plan: short runs at 20, 30, 40 and 50% general data, plus one with the base model's own answers (research:
+    endogenous replay protects general ability best), compared on validation; the best is used for the real run."""
     from . import adapters
     st = load(); res = st.get("mix", {}).get("runs", {})
-    for share in (0.2, 0.3, 0.4, 0.5):
-        if str(share) in res: continue
-        _train("mix_test", 20, share)
+    for source, share in ARMS:
+        key = f"{source}:{share}"
+        if key in res: continue
+        if source == "self": make_self_answers()
+        _train("mix_test", 20, share, source)
         v = adapters.versions("mix_test")[-1]
-        res[str(share)] = {"total": v["total"], "scores": v["scores"]}
+        res[key] = {"total": v["total"], "scores": v["scores"], "source": source, "share": share}
         st = load(); st["mix"] = {"runs": res}; save(st)
-        print(f"general share {share:.0%}: validation total {v['total']}", flush=True)
-    best = max(res, key=lambda k: res[k]["total"])
-    st = load(); st["mix"] = {"runs": res, "best": float(best)}; save(st)
+        print(f"{'own answers' if source == 'self' else 'dataset answers'} at {share:.0%}: validation total {v['total']}", flush=True)
+    best = max(res.values(), key=lambda r: r["total"])
+    st = load(); st["mix"] = {"runs": res, "best_arm": {"share": best["share"], "source": best["source"]}}; save(st)
     import shutil; shutil.rmtree(os.path.join("models", "adapters", "mix_test"), ignore_errors=True)  # only the result is kept
-    print(f"best general share: {float(best):.0%}")
+    print(f"best: {best['source']} answers at {best['share']:.0%}")
 
 
 def main():
