@@ -62,21 +62,48 @@ class GpuData:
         return seq[:, :-1], seq[:, 1:], P
 
 
+def cap_gpu_memory(device, log=print):
+    """On Windows, when a program needs more than the graphics card has, the driver doesn't fail: it quietly
+    borrows normal RAM ("shared GPU memory") and everything gets 10-50x slower. Capping PyTorch at what the card
+    really has free makes it fail fast instead, so training switches to smaller pieces and stays at full speed."""
+    if device != "cuda": return
+    try:
+        free, total = torch.cuda.mem_get_info()
+        frac = max(0.3, min(0.95, (free - 400 * 2**20) / total))  # leave a little for Windows and the screen
+        torch.cuda.set_per_process_memory_fraction(frac)
+        log(f"GPU memory: using up to {frac * total / 2**30:.1f} of {total / 2**30:.1f} GB (the rest is in use by Windows and other programs)")
+    except Exception as e:
+        log(f"could not cap GPU memory: {e}")
+
+
+def in_pieces(fn, n, size):
+    """Run fn(start, end) over 0..n in pieces of `size`, halving the pieces if the GPU runs out of memory."""
+    out, i = [], 0
+    while i < n:
+        try:
+            out.append(fn(i, min(i + size, n))); i += size
+        except torch.OutOfMemoryError:
+            if size <= 1: raise
+            size //= 2; torch.cuda.empty_cache()
+    return out
+
+
 @torch.no_grad()
-def quick_accuracy(model, data, tok, amp, n_out, limit=2000):
+def quick_accuracy(model, data, tok, amp, n_out, limit=2000, piece=250):
     """Fast check during training: one pass, each setting must be the top allowed choice.
     (The full slow decode runs once at the end.)"""
     model.eval()
     ids = [torch.tensor(f, device=data.X.device) for f in tok.field_ids]
-    fields = exact = 0
-    for i in range(0, min(limit, data.n), 250):
-        idx = torch.arange(i, min(i + 250, data.n, limit), device=data.X.device)
-        xb, yb, P = data.batch(idx)
+    n = min(limit, data.n)
+
+    def part(i, j):
+        xb, yb, P = data.batch(torch.arange(i, j, device=data.X.device))
         with amp:
             lg = model(xb)[:, P - 1:P - 1 + len(ids)].float()
         ok = torch.stack([ids[s][lg[:, s, ids[s]].argmax(-1)] == yb[:, P - 1 + s] for s in range(len(ids))], 1)
-        fields += ok.sum().item(); exact += ok.all(1).sum().item()
-    n = min(limit, data.n)
+        return ok.sum().item(), ok.all(1).sum().item()
+    res = in_pieces(part, n, piece)
+    fields, exact = sum(r[0] for r in res), sum(r[1] for r in res)
     return fields / (n * len(ids)), exact / n
 
 
@@ -164,6 +191,7 @@ def main():
     d = SIZE_DEFAULTS.get(a.size, SIZE_DEFAULTS["small"])
     a.steps = a.steps or d[0]; a.batch = a.batch or d[1]; a.lr = a.lr or d[2]; a.muon_lr = a.muon_lr or d[3]
     micro = min(a.batch, MICRO.get(a.size, 64))  # pieces per step that fit in 8 GB (it halves them by itself if not)
+    cap_gpu_memory(device)
     if a.no_muon:
         opts = [torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.01)]
     else:
@@ -219,10 +247,12 @@ def main():
         if (step + 1) % a.eval_every == 0 or step + 1 == a.steps:
             ema = float(ema)
             model.eval()
+            piece = micro * 4  # checking needs less memory than learning, but not unlimited
             with torch.no_grad(), amp:
-                vl = sum(recipe_loss(model, *val_d.batch(torch.arange(i, min(i + 500, val_d.n), device=device)), n_out).item()
-                         for i in range(0, min(val_d.n, 2000), 500)) / max(1, len(range(0, min(val_d.n, 2000), 500)))
-            fa, ex = quick_accuracy(model, val_d, tok, amp, n_out)
+                nv = min(val_d.n, 2000)
+                parts = in_pieces(lambda i, j: (recipe_loss(model, *val_d.batch(torch.arange(i, j, device=device)), n_out).item() * (j - i)), nv, piece)
+                vl = sum(parts) / max(1, nv)
+            fa, ex = quick_accuracy(model, val_d, tok, amp, n_out, piece=piece)
             run.log(step + 1, train_loss=round(ema, 4), val_loss=round(vl, 4), field_acc=round(fa, 4), exact=round(ex, 4),
                     lr_mult=round(wsd(step, a.steps), 3), sec=round(time.time() - t0, 1))
             print(f"step {step+1:5d}  train {ema:.4f}  val {vl:.4f}  fields {fa:.2%}  exact {ex:.2%}  {time.time()-t0:.0f}s", flush=True)
