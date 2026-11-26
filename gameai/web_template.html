@@ -134,6 +134,14 @@ const log=$('log'),inp=$('in');
 const say=(html,cls='a')=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
 const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const GATE=.45,IMPORTANT=['goal','enemy','theme','player'];
+// Ask only when the answer would really change the game (research: models should ask when the answer differs, and
+// answer directly otherwise). Worth asking = how often YOU care about that part (learned from your answers: "Surprise
+// me" means you don't) x how likely the AI's pick would be wrong. Questions cost you time, so below ASK_COST it doesn't ask.
+const ASK_COST=.15,CARE_PRIOR={goal:.5,enemy:.4,theme:.35,player:.35};
+function careOf(f){const st=store.get('gameai.qstats',{})[f]||{asked:0,cared:0},k=4;return (st.cared+(CARE_PRIOR[f]??.2)*k)/(st.asked+k)}
+function askWorth(f,p){const n=options(f).length||1,right=p.unsure?Math.min(.95,p.conf||0):1/n;return careOf(f)*(1-right)}
+function noteAnswer(f,cared){const all=store.get('gameai.qstats',{}),st=all[f]||{asked:0,cared:0};st.asked++;if(cared)st.cared++;all[f]=st;store.set('gameai.qstats',all);
+ if(API&&API.app)post('api/qlog',{field:f,cared}).catch(()=>{})}
 const QTEXT={goal:"What's the goal?",enemy:'What should chase you?',theme:'Where does it take place?',player:'Who do you play as?'};
 const LABEL={none:'none (peaceful)',exit:'find the exit',survive:'survive'};
 let askOn=store.get('gameai.ask',true),lastGame=null,pending=null,menu=null,pop=null;
@@ -329,7 +337,7 @@ function answer(t){
  menu=null;
  const q=pending.queue[pending.i],long=t.trim().split(/\s+/).length>3,v=long?null:parseAnswer(q.f,t);
  if(v===null){if(long){pending=null;say('&gt; '+esc(t),'u');say('Skipping the questions; making a new game from that.','d');make(t.trim(),false);return}say(`I didn't catch that. Try a number from the list.`,'w');return}
- say('&gt; '+esc(v==='auto'?'(you pick)':(LABEL[v]||v)),'u');pending.pred[q.f]={value:v,conf:1};if(q.unsure&&v!=='auto'){if(!pending.pred.__corr)Object.defineProperty(pending.pred,'__corr',{value:{},writable:true});pending.pred.__corr[q.f]=v}pending.i++;
+ say('&gt; '+esc(v==='auto'?'(you pick)':(LABEL[v]||v)),'u');noteAnswer(q.f,v!=='auto');pending.pred[q.f]={value:v,conf:1};if(q.unsure&&v!=='auto'){if(!pending.pred.__corr)Object.defineProperty(pending.pred,'__corr',{value:{},writable:true});pending.pred.__corr[q.f]=v}pending.i++;
  if(pending.i<pending.queue.length)askNext();else{const p=pending;pending=null;finish(p.prompt,p.pred,false)}
 }
 async function make(prompt,edit){
@@ -340,7 +348,8 @@ async function make(prompt,edit){
  for(const f of FN){const p=pred[f];if(p.value!=='auto'&&p.conf<GATE){p.unsure=true;p.guess=p.value;p.value='auto'}}
  if(edit)keepUnmentioned(prompt,pred);
  if(askOn&&!edit){
-  const queue=[...FN.filter(f=>pred[f].unsure&&QTEXT[f]).map(f=>({f,unsure:true,guess:pred[f].guess})),...IMPORTANT.filter(f=>pred[f].value==='auto'&&!pred[f].unsure).map(f=>({f}))].slice(0,2);
+  const queue=[...FN.filter(f=>pred[f].unsure&&QTEXT[f]).map(f=>({f,unsure:true,guess:pred[f].guess,w:askWorth(f,pred[f])})),...IMPORTANT.filter(f=>pred[f].value==='auto'&&!pred[f].unsure).map(f=>({f,w:askWorth(f,pred[f])}))]
+   .filter(q=>q.w>ASK_COST).sort((a,b)=>b.w-a.w).slice(0,2);
   if(queue.length){say(`Quick question${queue.length>1?'s':''} so it's the game you want:`,'d');pending={prompt,pred,queue,i:0};askNext();return}
  }
  finish(prompt,pred,edit,ms);

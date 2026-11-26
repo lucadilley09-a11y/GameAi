@@ -90,7 +90,30 @@ def parse_check(text):
     return out
 
 
-def load_teacher(name):
+LEARN_DIR = os.path.join("models", "teachers", "learning")
+PARALLEL = 8   # requests the llama.cpp teacher answers at once
+
+
+def load_teacher_gguf(log=print, parallel=PARALLEL):
+    """the teacher through llama.cpp (Optimise phase: about 2.7 GB compressed instead of an ~8 GB download, and it
+    answers several requests at once). -> (name, None, running server) or None if it can't be set up"""
+    try:
+        from .coding.teacher import CANDIDATES as CC, fetch
+        from .phase0 import runtime as R
+        if not R.exe("llama-server"): R.install(log)
+        c = next(x for x in CC if x["key"] == "qwen3.5-4b")
+        gguf = fetch(c, log, folder=LEARN_DIR)
+        srv = R.Server(gguf, ctx=1024 * parallel, port=8793, parallel=parallel).__enter__()  # ~1k tokens per request is plenty here
+        return "Qwen/Qwen3.5-4B (llama.cpp)", None, srv
+    except Exception as e:
+        log(f"  the llama.cpp teacher couldn't be set up ({str(e)[:200]}); using the standard one")
+        return None
+
+
+def load_teacher(name, parallel=PARALLEL):
+    if not name or name == "Qwen/Qwen3.5-4B":  # the compressed copy of the same model
+        got = load_teacher_gguf(lambda m: print(m, flush=True), parallel)
+        if got: return got
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     tries = [name] if name else CANDIDATES
@@ -109,6 +132,13 @@ def load_teacher(name):
 
 
 def chat(tok, model, conversations, max_new, sample=True):
+    if hasattr(model, "chat"):  # the llama.cpp teacher: several at once
+        from concurrent.futures import ThreadPoolExecutor
+        def one(c):
+            try: return model.chat(c, max_tokens=max_new, thinking=False, temperature=0.9 if sample else 0.0)[0]
+            except Exception: return ""
+        with ThreadPoolExecutor(8) as ex: res = list(ex.map(one, conversations))
+        return [re.sub(r"<think>.*?</think>", "", r, flags=re.S).strip() for r in res]
     import torch
     texts = []
     for c in conversations:
@@ -133,7 +163,7 @@ def main():
     import torch
     if not torch.cuda.is_available():
         sys.exit("The teacher needs your NVIDIA GPU.")
-    repo, tok, model = load_teacher(a.model)
+    repo, tok, model = load_teacher(a.model, parallel=8 if a.batch >= 32 else 4)  # fewer at once beside training
     os.makedirs("data", exist_ok=True)
     rng = random.Random(time.time())
     kept = tried = 0
@@ -167,6 +197,7 @@ def main():
             print("@@P" + json.dumps({"step": kept, "total": a.n, "loss": round(kept / max(1, tried), 3), "sec": round(time.time() - t0)}), flush=True)
             print(f"kept {kept}/{a.n}  ({kept / max(1, tried):.0%} passed the self-check, {rate:.0f} per minute)  e.g. \"{prompts[0][:90]}\"", flush=True)
     print(f"Done: {kept} natural examples saved. They are used automatically the next time you /train or /learn.")
+    if hasattr(model, "__exit__"): model.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

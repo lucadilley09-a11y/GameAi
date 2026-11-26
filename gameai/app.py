@@ -202,6 +202,11 @@ class H(BaseHTTPRequestHandler):
             try: autopilot.answer(str(b.get("id", "")), str(b.get("choice", "")))
             except (ValueError, KeyError) as e: return self.send(400, {"error": str(e)})
             return self.send(200, {"ok": True, "autopilot": autopilot_status()})
+        if path == "/api/qlog":  # which parts you care about when you didn't mention them (clarify.py learns from it)
+            os.makedirs("memory", exist_ok=True)
+            row = {"field": str(b.get("field", ""))[:20], "cared": bool(b.get("cared")), "time": time.strftime("%Y-%m-%d %H:%M")}
+            open(os.path.join("memory", "questions.jsonl"), "a", encoding="utf-8").write(json.dumps(row) + "\n")
+            return self.send(200, {"ok": True})
         if path == "/api/storage":
             from . import storage
             if STATE["job"]["running"]: return self.send(409, {"error": "A job is running; cleaning waits until it's done (it also runs by itself every day)."})

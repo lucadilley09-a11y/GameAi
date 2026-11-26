@@ -31,32 +31,56 @@ def convert_script():
     return hits[0] if hits else None
 
 
-def install(log=print):
-    """Download llama.cpp's official prebuilt release for this PC (Windows + NVIDIA: the CUDA build) and its source
-    (only for the converter script). About 150-300 MB."""
-    if exe("llama-server") and exe("llama-quantize") and convert_script():
-        return json.load(open(os.path.join(DIR, "release.json"))) if os.path.exists(os.path.join(DIR, "release.json")) else {"tag": "local"}
-    _, final = _get(REL + "/latest")
-    tag = final.rstrip("/").rsplit("/", 1)[-1]
-    html = _get(f"{REL}/expanded_assets/{tag}")[0].decode("utf-8", "replace")
-    assets = sorted(set(re.findall(r'href="(/ggml-org/llama\.cpp/releases/download/[^"]+\.zip)"', html)))
-    names = [a.rsplit("/", 1)[-1] for a in assets]
+def pick_assets(names):
+    """the files for this PC from one release's file names (Windows + NVIDIA: the CUDA 12 build, which works with more
+    drivers than CUDA 13, plus its cudart runtime files)"""
     if os.name == "nt":
         cuda = [n for n in names if re.match(r"llama-.*-bin-win-cuda-12\.\d+-x64\.zip$", n)] or [n for n in names if re.match(r"llama-.*-bin-win-cuda-.*-x64\.zip$", n)]
         pick = sorted(cuda)[-1:] if cuda else [n for n in names if re.match(r"llama-.*-bin-win-(vulkan|cpu)-x64\.zip$", n)][:1]
         if pick and "cuda" in pick[0]:
             ver = re.search(r"cuda-([\d.]+)", pick[0]).group(1)
-            pick += [n for n in names if n.startswith("cudart-") and f"cuda-{ver}" in n and "win" in n][:1]
-    else:
-        pick = [n for n in names if re.match(r"llama-.*-bin-ubuntu-x64\.zip$", n)][:1]
-    if not pick: raise RuntimeError(f"couldn't find a llama.cpp build for this PC in release {tag}")
+            pick += [n for n in names if n.startswith("cudart-") and f"cuda-{ver}-" in n and "-win-" in n and n.endswith("-x64.zip")][:1]
+        return pick
+    return [n for n in names if re.match(r"llama-.*-bin-ubuntu-x64\.(zip|tar\.gz)$", n)][:1]
+
+
+def find_release(log=print):
+    """-> (tag, files). The newest release that really has builds for this PC. Since llama.cpp 1.0 (November 2026) the
+    'latest' release (v1.0.0 and later) can hold only source code, while the builds stay on the numbered nightly
+    releases (b12359 and up), so those are tried too, newest first."""
+    _, final = _get(REL + "/latest")
+    tags = [final.rstrip("/").rsplit("/", 1)[-1]]
+    try:
+        page = _get(REL)[0].decode("utf-8", "replace")
+        tags += sorted(set(re.findall(r"/releases/tag/(b\d+)", page)), key=lambda t: -int(t[1:]))
+    except Exception:
+        pass
+    for tag in list(dict.fromkeys(tags))[:8]:
+        try: html = _get(f"{REL}/expanded_assets/{tag}")[0].decode("utf-8", "replace")
+        except Exception: continue
+        names = sorted({a.rsplit("/", 1)[-1] for a in re.findall(r'href="(/ggml-org/llama\.cpp/releases/download/[^"]+\.(?:zip|tar\.gz))"', html)})
+        pick = pick_assets(names)
+        if pick: return tag, pick
+        log(f"  release {tag} has no build for this PC, trying an older one")
+    raise RuntimeError("couldn't find a llama.cpp build for this PC in the newest releases: " + ", ".join(tags[:8]))
+
+
+def install(log=print):
+    """Download llama.cpp's official prebuilt release for this PC (Windows + NVIDIA: the CUDA build) and its source
+    (only for the converter script). About 150-300 MB."""
+    if exe("llama-server") and exe("llama-quantize") and convert_script():
+        return json.load(open(os.path.join(DIR, "release.json"))) if os.path.exists(os.path.join(DIR, "release.json")) else {"tag": "local"}
+    tag, pick = find_release(log)
     from .common import need_space
     need_space(1.0, "llama.cpp")
     os.makedirs(DIR, exist_ok=True)
     for n in pick:
         log(f"  downloading {n}...")
         data, _ = _get(f"{REL}/download/{tag}/{n}", timeout=600)
-        zipfile.ZipFile(io.BytesIO(data)).extractall(os.path.join(DIR, "bin"))
+        if n.endswith(".zip"): zipfile.ZipFile(io.BytesIO(data)).extractall(os.path.join(DIR, "bin"))
+        else:
+            import tarfile
+            tarfile.open(fileobj=io.BytesIO(data), mode="r:gz").extractall(os.path.join(DIR, "bin"), filter="data")
     server = exe("llama-server")
     if server:  # the GPU runtime files (cudart) must sit next to llama-server.exe
         for dll in glob.glob(os.path.join(DIR, "bin", "**", "*.dll"), recursive=True):
@@ -176,7 +200,7 @@ class Server:
     prompt between requests (the same instructions aren't processed again). The bake-off turns both off so every
     candidate is measured the same plain way."""
 
-    def __init__(self, gguf, mmproj=None, ctx=8192, port=8790, gpu_layers=99, extra=(), tuned=True, cache_prompt=True):
+    def __init__(self, gguf, mmproj=None, ctx=8192, port=8790, gpu_layers=99, extra=(), tuned=True, cache_prompt=True, parallel=1):
         extra = list(extra)
         if tuned:
             have = {x for x in extra if str(x).startswith("-")}
@@ -185,7 +209,7 @@ class Server:
                     extra.append(f)
                     if i + 1 < len(t) and not str(t[i + 1]).startswith("-"): extra.append(t[i + 1])
         self.cache_prompt = cache_prompt
-        self.args = [exe("llama-server"), "-m", gguf, "--host", "127.0.0.1", "--port", str(port), "-c", str(ctx), "-ngl", str(gpu_layers), "--jinja", "-np", "1", *extra]
+        self.args = [exe("llama-server"), "-m", gguf, "--host", "127.0.0.1", "--port", str(port), "-c", str(ctx), "-ngl", str(gpu_layers), "--jinja", "-np", str(parallel), *extra]
         if mmproj: self.args += ["--mmproj", mmproj]
         if not self.args[0]: raise RuntimeError("llama-server isn't installed")
         self.url, self.p, self.log = f"http://127.0.0.1:{port}", None, os.path.join("logs", "llama-server.log")

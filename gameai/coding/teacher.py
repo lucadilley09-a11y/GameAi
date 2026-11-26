@@ -38,11 +38,11 @@ def _licence(repo):
     return rec
 
 
-def fetch(c, log=print):
+def fetch(c, log=print, folder=None):
     """download (and if needed convert and compress) one candidate -> path of its .gguf"""
     from ..phase0 import runtime as R
     from ..phase0.common import need_space
-    dest = os.path.join(DIR, c["key"])
+    dest = os.path.join(folder or DIR, c["key"])
     have = sorted(glob.glob(os.path.join(dest, "*.gguf")))
     if have: return have[0]
     from huggingface_hub import snapshot_download, HfApi

@@ -109,6 +109,33 @@ def main():
         polite.state = lambda: "away"
         g.checked = 0; n = len(slept); g.after_step()
         t("when you're away, full speed", len(slept) == n)
+        # clarifying questions: ask only when the answer would matter
+        from gameai import clarify as Cl
+        os.makedirs("memory", exist_ok=True)
+        with open("memory/questions.jsonl", "w") as f:
+            for _ in range(20): f.write(json.dumps({"field": "theme", "cared": False}) + "\n")
+            for _ in range(10): f.write(json.dumps({"field": "goal", "cared": True}) + "\n")
+        cares = Cl.care()
+        t("what you care about is learned from your answers", cares["theme"] < 0.1 and cares["goal"] > 0.8, cares)
+        rec = {f: "auto" for f in Cl.QUESTION}
+        t("it asks about what you care about, never about what you always skip", Cl.choose_questions(rec, cares)[0] == "goal" and "theme" not in Cl.choose_questions(rec, cares))
+        t("nothing to ask when the request says it all", Cl.choose_questions({f: "x" for f in Cl.QUESTION}, cares) == [])
+        import gameai.guard as Gd
+        class NoIx:
+            def match(self, t): return (False, None)
+        Gd.build_index = lambda: NoIx()
+        res = Cl.generate(300, cares=cares)
+        rows = [json.loads(l) for l in open("data/clarify/sft.jsonl")]
+        asked = [r for r in rows if r["asked"]]
+        t("simulated conversations: question, the user's reply, then the game", asked and all(r["messages"][2]["content"].endswith("surprise me") and r["messages"][-1]["content"].startswith("theme=") for r in asked), asked[:1])
+        pairs = [json.loads(l) for l in open("data/clarify/pairs.jsonl")]
+        t("preference pairs: asking vs answering, the better one chosen", pairs and all(p["chosen"] != p["rejected"] for p in pairs))
+        # the lighter learning teacher answers several at once
+        from gameai import teacher as Te
+        class FakeSrv:
+            def chat(self, c, **k): return ("<think>x</think> " + c[-1]["content"].upper(), {})
+        out = Te.chat(None, FakeSrv(), [[{"role": "user", "content": "a"}], [{"role": "user", "content": "b"}]], 20)
+        t("the llama.cpp teacher's answers come back in order, without thinking text", out == ["A", "B"], out)
     finally:
         os.chdir(here); shutil.rmtree(work, ignore_errors=True)
     print(f"{sum(R)}/{len(R)} passed")

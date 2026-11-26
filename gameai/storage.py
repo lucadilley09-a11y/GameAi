@@ -121,8 +121,9 @@ def clean(log=print, offload=True):
         pass
     # 2. Hugging Face downloads the app doesn't use (the learning teacher's model is kept)
     try:
-        from .teacher import CANDIDATES
-        keep = {"models--" + r.replace("/", "--") for r in CANDIDATES}
+        from .teacher import CANDIDATES, LEARN_DIR
+        # the learning teacher's full download is kept only while its compressed llama.cpp copy doesn't exist
+        keep = set() if glob.glob(os.path.join(LEARN_DIR, "**", "*.gguf"), recursive=True) else {"models--" + r.replace("/", "--") for r in CANDIDATES}
     except Exception:
         keep = set()
     hub = _hf_cache()
