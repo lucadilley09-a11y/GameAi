@@ -9,7 +9,7 @@
 "gameai/adapters.py": "bf6760802c40f4abd7c24a6c6f3dd6a0ab506fcc1fade616a93f9629c0002273",
 "gameai/all.py": "36ef24a33ae6f3aa675c5eff02282a38b95c702dc3eb967886c44d58e23d44dd",
 "gameai/app.py": "08358595fe8bc695d8da8c07819050edaba08de159eab9a2edb5ccebcc0697e1",
-"gameai/autopilot.py": "2d76dcaa463f8e68fab640375ceaeb560b59d2eaf2a298d8766d4737c6b9400c",
+"gameai/autopilot.py": "f9abac701fcbcf791324422d766eb00fc3b20543de98d7ded90e654a7ec59cae",
 "gameai/bench.py": "89242ea96b933f089748e41fed163f3d067ccc75baa4bdefc4b786573a659f37",
 "gameai/checks/__init__.py": "349dd23bcac13f04bac0fe6508b9fe273256bb577d1a4a3962acc5aab5d777e3",
 "gameai/checks/__main__.py": "aed13faec4b78a9adb5d6661058abd4277dfa9704c700072ca2f54b3604cde4c",

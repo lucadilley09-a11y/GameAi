@@ -104,9 +104,53 @@ def next_step(st):
         if sid in st["done"]: continue
         if need and (need not in st["answers"] or st["answers"][need]["choice"].startswith("Not now")):
             return None, "waiting for your answer", None
-        if st["tries"].get(sid, 0) >= MAX_TRIES: return None, f"'{label}' failed twice", None
+        if st["tries"].get(sid, 0) >= MAX_TRIES:
+            if fixed_since(sid):  # Claude published a fix after it failed: try again by itself
+                st["tries"].pop(sid, None); st["answers"].pop(f"failed_{sid}", None)
+                (st.get("extra_questions") or {}).pop(f"failed_{sid}", None)
+                news(st, f"A fix for '{label}' arrived: trying it again.", "a"); save(st)
+                return sid, f"{label} (step {i + 1} of {len(STEPS)})", cmd
+            return None, f"'{label}' failed twice", None
         return sid, f"{label} (step {i + 1} of {len(STEPS)})", cmd
     return None, "all done", None
+
+
+REPORTS = os.path.join("reports", "errors.jsonl")
+
+
+def _version():
+    try:
+        from . import update
+        return (update.local_version() or {}).get("sha") or "?"
+    except Exception:
+        return "?"
+
+
+def report(sid, label):
+    """a failed step -> reports/errors.jsonl, which Claude's overnight check reads and fixes (the user's request:
+    "if something breaks, it reports it to you, you fix it, and then it continues")"""
+    tail = ""
+    try:
+        with open(os.path.join("logs", "job.log"), "rb") as f:
+            f.seek(0, 2); f.seek(max(0, f.tell() - 8000)); tail = f.read().decode("utf-8", "replace")
+    except OSError: pass
+    os.makedirs("reports", exist_ok=True)
+    with open(REPORTS, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "step": sid, "label": label, "version": _version(),
+                            "log_tail": tail}, ensure_ascii=False) + "\n")
+
+
+def fixed_since(sid):
+    """has a newer version been installed since this step's last failure report?"""
+    if not os.path.exists(REPORTS): return False
+    last = None
+    for l in open(REPORTS, encoding="utf-8"):
+        try:
+            r = json.loads(l)
+            if r.get("step") == sid: last = r
+        except ValueError: pass
+    v = _version()
+    return bool(last) and v != "?" and last.get("version") not in ("?", v)
 
 
 def may_start(st, idle_s, hour=None):
@@ -137,6 +181,7 @@ def finished(sid, ok, tail=""):
             news(st, "The first release of your new AI is ready, tested and working offline. The setup steps are finished: "
                      "send Claude the files in bench\\phase0 and models\\releases so the next phase can start.", "a")
     else:
+        report(sid, label)
         st["tries"][sid] = st["tries"].get(sid, 0) + 1
         if st["tries"][sid] >= MAX_TRIES:
             st["answers"].pop(f"failed_{sid}", None)  # ask again, even if it was answered before
