@@ -116,6 +116,67 @@ def recipe_loss(model, xb, yb, P, n_out):
     return F.cross_entropy(logits.reshape(-1, logits.size(-1)).float(), yb[:, P - 1:P - 1 + n_out].reshape(-1))
 
 
+DISTILL_T = 2.0      # softening of the current AI's answers (standard in distillation research)
+DISTILL_UNTIL = 0.6  # its share fades to zero by 60% of training, so the bigger AI is never held back to its level
+
+
+def distill_loss(model, teacher, xb, yb, P, n_out, weight):
+    """the usual loss, mixed with matching the current AI's softened answers (training speed-up 2, approved by you).
+    Its full answer (how likely every choice is, not just the right one) carries more to learn from per example."""
+    logits = model(xb)[:, P - 1:P - 1 + n_out].float()
+    ce = F.cross_entropy(logits.reshape(-1, logits.size(-1)), yb[:, P - 1:P - 1 + n_out].reshape(-1))
+    if weight <= 0: return ce
+    with torch.no_grad():
+        t = teacher(xb)[:, P - 1:P - 1 + n_out].float()
+    T = DISTILL_T
+    kl = F.kl_div(F.log_softmax(logits / T, -1).reshape(-1, logits.size(-1)), F.log_softmax(t / T, -1).reshape(-1, t.size(-1)),
+                  log_target=True, reduction="batchmean") * T * T
+    return (1 - weight) * ce + weight * kl
+
+
+def distill_weight(step, total, start):
+    return start * max(0.0, 1 - step / max(1, DISTILL_UNTIL * total))
+
+
+def tune_micro(fwd, data, batch, start, device, n_out, log=print, tries=3):
+    """Training speed-up 3: the fastest number of examples the GPU handles at once (the batch is split into pieces of
+    this size and added up, so the learning is the same: only the speed changes). Tries the default and bigger pieces,
+    keeps the fastest that fits. Remembered per size and graphics card in runtime/batch.json."""
+    if device != "cuda": return start
+    import torch as _t
+    name = _t.cuda.get_device_name(0)
+    path = os.path.join("runtime", "batch.json")
+    saved = json.load(open(path)) if os.path.exists(path) else {}
+    key = f"{name}|{batch}|{start}|{sum(p.numel() for p in fwd.parameters()) if hasattr(fwd, 'parameters') else 0}"
+    if key in saved: return saved[key]
+    idx = data.sample(batch)
+    amp = _t.autocast("cuda", dtype=_t.bfloat16)
+    best, best_t, m = start, None, start
+    while m <= batch:
+        try:
+            times = []
+            for i in range(tries + 1):
+                _t.cuda.synchronize(); t0 = time.time()
+                for c in idx.split(m):
+                    xb, yb, P = data.batch(c)
+                    with amp: (recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))).backward()
+                _t.cuda.synchronize()
+                if i: times.append(time.time() - t0)  # the first round warms up
+            t = min(times)
+            log(f"  {m} examples at a time: {batch / t:.0f} examples/second")
+            if best_t is None or t < best_t * 0.97: best, best_t = m, t
+        except _t.OutOfMemoryError:
+            _t.cuda.empty_cache(); break
+        finally:
+            for p in fwd.parameters(): p.grad = None
+        m *= 2
+    _t.cuda.empty_cache()
+    saved[key] = best
+    os.makedirs("runtime", exist_ok=True); json.dump(saved, open(path, "w"), indent=1)
+    if best != start: log(f"Training does {best} examples at a time instead of {start}: faster, same learning")
+    return best
+
+
 def accuracy(model, tok, rows, device):
     preds = decode(model, tok, [r["prompt"] for r in rows], device, gate=0.0)
     fields = exact = 0
@@ -141,6 +202,32 @@ SIZE_DEFAULTS = {  # size: (steps, batch, AdamW lr, Muon lr)
     "base": (6000, 256, 2e-3, 0.015),
     "large": (8000, 256, 1.5e-3, 0.01),
 }
+
+
+def grown_model(path, size, tok, device):
+    """a bigger AI that starts from a smaller trained one (training speed-up 1)"""
+    from .model import Config
+    from .grow import grow, describe
+    ck = torch.load(path, map_location=device, weights_only=False)
+    if ck.get("tokenizer") != tok.itos:
+        from .generate import upgrade_model
+        small = upgrade_model(ck, tok, device)
+    else:
+        small = GameAI(Config(**ck["config"])).to(device); small.load_state_dict(ck["model"])
+    model, info = grow(small, size)
+    print(describe(info), flush=True)
+    return model
+
+
+def load_teacher(path, tok, device):
+    from .model import Config
+    ck = torch.load(path, map_location=device, weights_only=False)
+    if ck.get("tokenizer") != tok.itos:
+        print("The current AI uses an older game language, so the new one doesn't learn from its answers (it still starts from it)", flush=True)
+        return None
+    t = GameAI(Config(**ck["config"])).to(device); t.load_state_dict(ck["model"]); t.eval()
+    for p in t.parameters(): p.requires_grad_(False)
+    return t
 
 
 def maybe_compile(model, mode="auto", device="cuda"):
@@ -176,6 +263,10 @@ def main():
     ap.add_argument("--name", default=None)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--init", default=None, help="continue training from this checkpoint (warm start) instead of from scratch")
+    ap.add_argument("--grow-from", default=None, help="start a bigger --size from this smaller trained AI, keeping what it learned (grow.py)")
+    ap.add_argument("--teacher", default=None, help="also learn from this AI's answers (distillation), fading out by 60%% of training")
+    ap.add_argument("--distill", type=float, default=0.5, help="how much the teacher's answers count at the start")
+    ap.add_argument("--tune-batch", choices=["auto", "off"], default="auto", help="measure the fastest pieces size for this GPU")
     a = ap.parse_args()
 
     torch.manual_seed(a.seed); random.seed(a.seed)
@@ -221,13 +312,19 @@ def main():
             model = GameAI(Config(**ck0["config"])).to(device); model.load_state_dict(ck0["model"])
         a.size = ck0.get("size", a.size)
         print(f"  ready ({time.time() - t1:.0f}s, size {a.size})", flush=True)
+    elif a.grow_from:
+        model = grown_model(a.grow_from, a.size, tok, device)
     else:
         model = GameAI(make_config(a.size, tok.vocab_size, tok.max_len)).to(device)
+    teacher = load_teacher(a.teacher, tok, device) if a.teacher else None
     n_params = model.num_params()
     d = SIZE_DEFAULTS.get(a.size, SIZE_DEFAULTS["small"])
     a.steps = a.steps or d[0]; a.batch = a.batch or d[1]; a.lr = a.lr or d[2]; a.muon_lr = a.muon_lr or d[3]
     micro = min(a.batch, MICRO.get(a.size, 64))  # pieces per step that fit in 8 GB (it halves them by itself if not)
     cap_gpu_memory(device)
+    if a.tune_batch == "auto" and micro < a.batch:
+        print("Measuring the fastest batch pieces for this GPU (under a minute)...", flush=True)
+        micro = tune_micro(model, train_d, a.batch, micro, device, n_out, log=lambda m: print(m, flush=True))
     if a.no_muon:
         opts = [torch.optim.AdamW(model.parameters(), lr=a.lr, betas=(0.9, 0.95), weight_decay=0.01)]
     else:
@@ -253,7 +350,10 @@ def main():
     from . import polite
     polite.lower_priority(); gate = polite.Gate(log=lambda m: print(m, flush=True))
     best, bad, t0, ema = float("inf"), 0, time.time(), None
+    if teacher is not None: print(f"Also learning from {a.teacher}'s answers (fades out by {DISTILL_UNTIL:.0%} of training)", flush=True)
     for step in range(a.steps):
+        w = distill_weight(step, a.steps, a.distill) if teacher is not None else 0.0
+        step_loss = (lambda f, xb, yb, P, w=w: distill_loss(f, teacher, xb, yb, P, n_out, w)) if w > 0 else (lambda f, xb, yb, P: recipe_loss(f, xb, yb, P, n_out))
         for o in opts:
             for g in o.param_groups: g["lr"] = g["base_lr"] * wsd(step, a.steps)
         model.train()
@@ -267,7 +367,7 @@ def main():
                     xb, yb, P = train_d.batch(c)
                     try:
                         with amp:
-                            part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
+                            part = step_loss(fwd, xb, yb, P) * (len(c) / len(idx))
                     except torch.OutOfMemoryError:
                         raise
                     except Exception as e:  # compiling failed on this PC: carry on without it (same results, just slower)
@@ -275,7 +375,7 @@ def main():
                         print(f"torch.compile didn't work here ({str(e).splitlines()[0][:150]}); training without it", flush=True)
                         fwd = eager
                         with amp:
-                            part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
+                            part = step_loss(fwd, xb, yb, P) * (len(c) / len(idx))
                     part.backward(); loss = loss + part.detach()
                 break
             except torch.OutOfMemoryError:

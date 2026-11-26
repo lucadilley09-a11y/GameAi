@@ -84,7 +84,7 @@ body.baked{background:#141413}.baked .screen{background:#1c1c1b;border:1px solid
 </div>
 <div class="screen">
  <canvas id="game" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas>
- <div class="legend"><span>Move: arrow keys or WASD</span><span>R or Enter: play again</span></div>
+ <div class="legend"><span>Move: arrow keys or WASD</span><span>P or Esc: pause</span><span>R or Enter: play again</span></div>
 </div>
 </main>
 <script>/*GAMEAI_RECIPE*/</script>
@@ -396,7 +396,7 @@ function blocked(x,y,r){return solid(x-r,y-r)||solid(x+r,y-r)||solid(x-r,y+r)||s
 function move(e,dx,dy){if(e.ghost){e.x=Math.min(Math.max(e.x+dx,TS+12),S.cols*TS-TS-12);e.y=Math.min(Math.max(e.y+dy,TS+12),S.rows*TS-TS-12);return}if(!blocked(e.x+dx,e.y,e.r))e.x+=dx;if(!blocked(e.x,e.y+dy,e.r))e.y+=dy}
 
 function update(dt){
- if(!S||S.state!=='play')return;S.t+=dt;const p=S.p;
+ if(!S||S.state!=='play'||S.paused)return;S.t+=dt;const p=S.p;
  let dx=(keys.ArrowRight||keys.KeyD?1:0)-(keys.ArrowLeft||keys.KeyA?1:0),dy=(keys.ArrowDown||keys.KeyS?1:0)-(keys.ArrowUp||keys.KeyW?1:0);
  if(dx&&dy){dx*=.7071;dy*=.7071}const ps=S.pspd*(S.boost>0?1.5:1);move(p,dx*ps*dt,dy*ps*dt);
  if(S.inv>0)S.inv-=dt;if(S.boost>0)S.boost-=dt;if(S.shield>0)S.shield-=dt;
@@ -638,10 +638,50 @@ function draw(){
  if(S.msg){ctx.textAlign='center';ctx.fillStyle='#000a';ctx.fillRect(170,440,300,30);txt(S.msg.text,320,455,0,'#b6f24a','600 16px Inter,system-ui,sans-serif')}
  const fx=(S.boost>0?`👟 ${S.boost.toFixed(1)}s  `:'')+(S.shield>0?`🛡️ ${S.shield.toFixed(1)}s`:'');ctx.textAlign='center';if(fx)txt(fx,320,15,0,'#fff','600 15px Inter,"Segoe UI Emoji","Noto Color Emoji",sans-serif');
  ctx.textAlign='right';txt('❤️'.repeat(Math.max(0,S.hp)),630,15,15);ctx.textAlign='center';
- if(S.state!=='play'){ctx.fillStyle='#000b';ctx.fillRect(0,0,VW,VH);txt(S.state==='win'?'You win!':S.why==='time'?'Time\'s up!':'Game over',320,200,0,S.state==='win'?'#b6f24a':'#ff7a8a','700 46px "Pixelify Sans",system-ui,sans-serif');txt(`Score ${S.score}${S.best!=null?`  ·  best ${S.best}`:''}`,320,245,0,'#ffd166','600 18px Inter,system-ui,sans-serif');txt('Press R or Enter to play again',320,280,0,'#e6e8f7','500 17px Inter,system-ui,sans-serif')}
+ if(S.state!=='play'&&GUI.on){ctx.fillStyle='#0008';ctx.fillRect(0,0,VW,VH)}
+ if(S.state!=='play'&&!GUI.on){ctx.fillStyle='#000b';ctx.fillRect(0,0,VW,VH);txt(S.state==='win'?'You win!':S.why==='time'?'Time\'s up!':'Game over',320,200,0,S.state==='win'?'#b6f24a':'#ff7a8a','700 46px "Pixelify Sans",system-ui,sans-serif');txt(`Score ${S.score}${S.best!=null?`  ·  best ${S.best}`:''}`,320,245,0,'#ffd166','600 18px Inter,system-ui,sans-serif');txt('Press R or Enter to play again',320,280,0,'#e6e8f7','500 17px Inter,system-ui,sans-serif')}
 }
 let last=performance.now();
-function loop(now){update(Math.min(.05,(now-last)/1000));last=now;draw();requestAnimationFrame(loop)}
+function loop(now){update(Math.min(.05,(now-last)/1000));last=now;draw();guiSync();requestAnimationFrame(loop)}
+
+// ---------- game screens: pause, win, game over, built from GameUI (Phase 5) ----------
+// The screens are real buttons over the game, in a GameUI style matched to the game's world. Without a page (the
+// playtesters) or without the stylesheet, the game draws its old canvas screens instead.
+const GUI_CSS=/*GAMEUI_CSS*/'';
+const GUI_STYLE={forest:'cozy',ocean:'cozy',snow:'cozy',dungeon:'pixel',desert:'pixel',volcano:'pixel',space:'neon'};
+const GUI={on:false,el:null,key:''};
+function guiEsc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c])}
+function guiInit(){
+ if(GUI.el||!GUI_CSS||typeof document==='undefined'||!cv.parentNode)return;
+ const st=document.createElement('style');
+ st.textContent=GUI_CSS+'.gui.gui-overlay{position:absolute;min-height:0;z-index:2;overflow:auto;padding:12px;border-radius:10px;background:rgba(17,19,26,.88)}.gui-overlay[data-theme=pixel]{background:rgba(26,28,44,.9)}.gui-overlay[data-theme=neon]{background:rgba(7,6,15,.86)}.gui-overlay[data-theme=cozy]{background:rgba(246,239,227,.92)}.gui.gui-overlay[hidden]{display:none}.gui-overlay .gui-title{font-size:clamp(24px,5vw,44px)}.gui-overlay .gui-menu{width:min(100%,260px)}';
+ document.head.appendChild(st);
+ const par=cv.parentNode;if(getComputedStyle(par).position==='static')par.style.position='relative';
+ GUI.el=document.createElement('div');GUI.el.className='gui gui-overlay';GUI.el.hidden=true;GUI.el.setAttribute('role','dialog');GUI.el.setAttribute('aria-live','polite');
+ par.appendChild(GUI.el);GUI.on=true;
+ GUI.el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!S)return;
+  if(b.dataset.act==='again'||b.dataset.act==='restart'){build({...S.r,level:1})}else if(b.dataset.act==='resume'){S.paused=false}
+  guiSync(true);cv.focus()});
+ const place=()=>{Object.assign(GUI.el.style,{left:cv.offsetLeft+'px',top:cv.offsetTop+'px',width:cv.offsetWidth+'px',height:cv.offsetHeight+'px'})};
+ place();if(typeof ResizeObserver!=='undefined')new ResizeObserver(place).observe(cv);addEventListener('resize',place);GUI.place=place;
+}
+function guiSync(force){
+ if(!GUI.on)return;
+ const st=!S?'':S.paused&&S.state==='play'?'pause':S.state==='play'?'':S.state,key=st+'|'+(S?S.score+'|'+S.best+'|'+S.r.theme:'');
+ if(!force&&key===GUI.key)return;GUI.key=key;
+ if(!st){GUI.el.hidden=true;return}
+ GUI.el.dataset.theme=GUI_STYLE[S.r.theme]||'clean';
+ const title=st==='pause'?'Paused':st==='win'?'You win!':S.why==='time'?"Time's up!":'Game over';
+ const sub=st==='pause'?(S.levels>1?`Level ${S.level} of ${S.levels} · `:'')+`Score ${S.score}`:`Score ${S.score}`+(S.best!=null?` · Best ${S.best}`:'');
+ const btns=st==='pause'?'<button class="gui-btn gui-primary" data-act="resume">Resume</button><button class="gui-btn" data-act="restart">Restart</button>'
+  :'<button class="gui-btn gui-primary" data-act="again">Play again</button>';
+ const hint=st==='pause'?'P or Esc to resume':'Enter or R to play again';
+ GUI.el.innerHTML=`<div class="gui-screen"><h2 class="gui-title">${guiEsc(title)}</h2><p class="gui-subtitle">${guiEsc(sub)}</p><div class="gui-menu">${btns}</div><p class="gui-muted">${hint}</p></div>`;
+ GUI.el.hidden=false;if(GUI.place)GUI.place();
+}
+if(typeof document!=='undefined')addEventListener('keydown',e=>{if(!S||S.state!=='play'||(e.target&&e.target.tagName==='TEXTAREA'))return;
+ if(e.code==='KeyP'||e.code==='Escape'){S.paused=!S.paused;for(const k in keys)keys[k]=false;e.preventDefault()}});
+guiInit();
 requestAnimationFrame(loop);
 
 // ---------- prompt -> recipe -> game ----------

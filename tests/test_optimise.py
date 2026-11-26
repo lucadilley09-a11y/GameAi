@@ -136,10 +136,53 @@ def main():
             def chat(self, c, **k): return ("<think>x</think> " + c[-1]["content"].upper(), {})
         out = Te.chat(None, FakeSrv(), [[{"role": "user", "content": "a"}], [{"role": "user", "content": "b"}]], 20)
         t("the llama.cpp teacher's answers come back in order, without thinking text", out == ["A", "B"], out)
+        speedups_1_to_3()
     finally:
         os.chdir(here); shutil.rmtree(work, ignore_errors=True)
     print(f"{sum(R)}/{len(R)} passed")
     if not all(R): sys.exit(1)
+
+
+def speedups_1_to_3():
+    """training speed-ups 1-3: growing, learning from the current AI, fastest batch pieces"""
+    import torch
+    from gameai.model import GameAI, make_config
+    from gameai.grow import grow
+    from gameai import train as Tr, all as All
+    torch.manual_seed(0)
+    for a, b, exact in [("tiny", "small", True), ("small", "large", True), ("base", "large", True), ("small", "base", False)]:
+        m = GameAI(make_config(a, 120, 48)); m.eval()
+        with torch.no_grad():
+            for p in m.parameters(): p.add_(torch.randn_like(p) * 0.05)
+        g, info = grow(m, b); g.eval()
+        x = torch.randint(1, 120, (2, 16)); x[0, :3] = 0
+        with torch.no_grad(): diff = float((m(x) - g(x)).abs().max())
+        if exact:
+            t(f"growing {a} -> {b} keeps the same answers", info["exact"] and diff < 0.01 and g.num_params() > m.num_params(), (info, diff))
+        else:
+            t(f"growing {a} -> {b} is an approximate start and says so", not info["exact"] and info["heads_dropped"] > 0, info)
+    g, _ = grow(GameAI(make_config("tiny", 120, 48)), "small")
+    xb = torch.randint(1, 120, (4, 12)); xb[:, 0] = 0
+    opt = torch.optim.SGD(g.parameters(), lr=0.1)
+    for _ in range(2):  # new layers' zero outputs pick up on the first step, then everything behind them learns
+        opt.zero_grad(); Tr.recipe_loss(g, xb, xb, 5, 3).backward(); opt.step()
+    opt.zero_grad(); Tr.recipe_loss(g, xb, xb, 5, 3).backward()
+    dead = [n for n, p in g.named_parameters() if p.grad is None or float(p.grad.abs().sum()) == 0]
+    t("every part of a grown AI can learn (nothing stuck at zero)", not dead, dead)
+    teacher = GameAI(make_config("tiny", 120, 48)); student = GameAI(make_config("tiny", 120, 48))
+    ce = Tr.recipe_loss(student, xb, xb, 5, 3)
+    t("with the teacher's share at zero, the loss is the usual one", abs(Tr.distill_loss(student, teacher, xb, xb, 5, 3, 0.0).item() - ce.item()) < 1e-6)
+    student.load_state_dict(teacher.state_dict())
+    t("matching the teacher exactly adds nothing to the loss", abs(Tr.distill_loss(student, teacher, xb, xb, 5, 3, 1.0).item()) < 1e-4)
+    ws = [Tr.distill_weight(s, 1000, 0.5) for s in (0, 300, 600, 900)]
+    t("the teacher's share fades out by 60% of training", ws[0] == 0.5 and 0 < ws[1] < 0.5 and ws[2] == 0 and ws[3] == 0, ws)
+    t("batch-piece tuning is skipped without a GPU", Tr.tune_micro(student, None, 256, 32, "cpu", 3) == 32)
+    os.makedirs("models", exist_ok=True)
+    m = GameAI(make_config("small", 120, 48))
+    torch.save({"model": m.state_dict(), "config": m.config_dict(), "size": "small"}, "models/current.pt")
+    t("a bigger size starts from the current smaller AI", All.smaller_current("large") == "models/current.pt" and All.smaller_current("base") == "models/current.pt")
+    t("the same or a smaller size starts fresh", All.smaller_current("small") is None and All.smaller_current("tiny") is None)
+    os.remove("models/current.pt")
 
 
 main()

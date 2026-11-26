@@ -26,8 +26,8 @@
   const isControl = el => /^(button|input|select|textarea|a)$/i.test(el.tagName) || el.getAttribute('role') === 'button' || el.onclick;
   const items = all.filter(el => ownText(el) || isControl(el) || /^(img|canvas|svg|video)$/i.test(el.tagName));
 
-  // 1. overlaps between things that aren't nested in each other (and aren't meant to float, like a fixed overlay)
-  const floats = el => { for (let e = el; e && e !== document.body; e = e.parentElement) { const p = getComputedStyle(e).position; if (p === 'fixed' || p === 'sticky') return true; } return false; };
+  // 1. overlaps between things that aren't nested in each other (and aren't meant to float, like a fixed overlay or a dialog over a game)
+  const floats = el => { for (let e = el; e && e !== document.body; e = e.parentElement) { const p = getComputedStyle(e).position; if (p === 'fixed' || p === 'sticky' || (p === 'absolute' && e.getAttribute('role') === 'dialog')) return true; } return false; };
   const rects = items.map(el => [el, el.getBoundingClientRect()]);
   for (let i = 0; i < rects.length && problems.length < 200; i++) for (let j = i + 1; j < rects.length; j++) {
     const [a, ra] = rects[i], [b, rb] = rects[j];

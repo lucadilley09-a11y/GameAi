@@ -122,7 +122,8 @@ class App:
             fh.write(json.dumps({**self.last, "edit": edit, "ai_recipe": to_text(rec), "engine_ok": ok}) + "\n")
 
     def game_html(self):
-        tpl = open(os.path.join(os.path.dirname(__file__), "play_template.html"), encoding="utf-8").read()
+        from .export_web import play_template
+        tpl = play_template()
         return tpl.replace("/*GAMEAI_RECIPE*/", "window.GAMEAI_RECIPE=" + json.dumps(self.last["recipe"]) + ";")
 
     def open_browser(self):

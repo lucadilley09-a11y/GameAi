@@ -5,7 +5,7 @@
 Writes ONE file: for-chromebook/gameai-model.json. Put it on your Chromebook, open the
 Game AI Terminal, and drag the file onto it (or type /load). It is remembered after that.
 Also writes export/web/ (index.html, model.json, weights.json) for publishing the page."""
-import base64, json, os
+import re, base64, json, os
 import numpy as np
 from .generate import load
 from .recipe import FIELD_NAMES, OUT_FIELDS, CONSTRAINTS
@@ -47,8 +47,17 @@ def single_file(checkpoint="models/current.pt", compact=True):
     return json.dumps({**m, "b64": base64.b64encode(raw).decode()})
 
 
-def build_page(builtin=None, pc=None):
+def play_template():
+    """the game page, with the GameUI stylesheet put in for its pause / win / game-over screens"""
     play = open(os.path.join(HERE, "play_template.html"), encoding="utf-8").read()
+    css = open(os.path.join(HERE, "kit", "gameui.css"), encoding="utf-8").read()
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)  # comments out: smaller pages
+    css = re.sub(r"\s+", " ", css).strip()
+    return play.replace("/*GAMEUI_CSS*/''", json.dumps(css).replace("</", "<\\/"))
+
+
+def build_page(builtin=None, pc=None):
+    play = play_template()
     engine = play[play.index("// ---------- engine ----------"):play.index("// ---------- prompt -> recipe -> game ----------")]
     engine = engine.replace("Describe a game and press New game", "Type a game idea in the terminal").replace("Training the AI…", "Loading the AI…")
     page = open(os.path.join(HERE, "web_template.html"), encoding="utf-8").read()

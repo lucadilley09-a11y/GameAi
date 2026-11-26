@@ -97,6 +97,18 @@ def ui_skill():
     from gameai import autopilot
     ids = [s[0] for s in autopilot.STEPS]
     t("autopilot runs UI practice, then UI training", ids.index("ui_practice") < ids.index("ui_train"))
+    # games get GameUI screens, in a style matched to their world
+    from gameai.headless import random_recipe, Engine
+    from gameai.app import game_html
+    for th, style in (("space", "neon"), ("forest", "cozy"), ("dungeon", "pixel")):
+        r = random_recipe(random.Random(5), theme=th)
+        html = game_html(r).replace("</body>", '<script>dispatchEvent(new KeyboardEvent("keydown",{code:"KeyP"}))</script></body>')
+        res = R.check(html, screenshots=False)
+        dom = res["sizes"]["desktop"]["dom"]
+        t(f"a {th} game's pause screen is a GameUI screen in the {style} style, with clean layout", ">Paused<" in dom and f'data-theme="{style}"' in dom and ">Resume<" in dom and res["score"] >= 0.95, R.report(res))
+    e = Engine()
+    t("the playtesters still run the engine without a page", "proven" in e.judge(random_recipe(random.Random(3))))
+    e.close()
 
 def finish():
     print(f"{sum(T)}/{len(T)} passed")

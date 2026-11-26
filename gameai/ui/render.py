@@ -60,7 +60,7 @@ def check(page, sizes=None, screenshots=True, out_dir=None, timeout=60):
                 shot = os.path.join(out_dir, f"screenshot-{name}.png")
                 subprocess.run([browser, *_flags(w, h, prof), f"--screenshot={shot}", url], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
                 if not os.path.exists(shot): shot = None
-            res["sizes"][name] = {"size": [w, h], "report": rep, "screenshot": shot}
+            res["sizes"][name] = {"size": [w, h], "report": rep, "screenshot": shot, "dom": p.stdout}
         scores = [s["report"].get("score") for s in res["sizes"].values() if s["report"].get("score") is not None]
         res["score"] = min(scores) if scores else 0.0
         return res

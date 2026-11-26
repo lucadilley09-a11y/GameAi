@@ -95,11 +95,29 @@ how often its code works.
 
 `/train base` trains a 12.7 million parameter AI (about 3x the default 4.5 million), `/train large` 35 million.
 Each size has its own training settings (more steps, bigger batches, gentler learning rates for bigger ones).
+
+Training a bigger size is faster when you already have an AI (training speed-ups 1-3):
+
+- **It grows from your current AI.** The bigger AI starts as a copy of the current one laid out in the bigger shape,
+  so it begins at the current AI's level instead of from random numbers (`gameai/grow.py`). Growing tiny, small or base
+  into large, and tiny into small, keeps the answers exactly; small into base doesn't fit perfectly (base has fewer
+  head groups), so that one is an approximate start, still far ahead of random. In a test, the grown AI started at the
+  current AI's score, and after 40 steps it was well ahead of an AI starting fresh.
+- **It learns from the current AI's answers too** (distillation): how sure the current AI is about every choice, not
+  just the right one. That share fades to zero by 60% of training, so the bigger AI isn't held back at the old level.
+- **It measures the fastest batch pieces for your GPU** on the first run (under a minute, remembered in
+  `runtime/batch.json`): same learning, less waiting.
+
+`/train large` does all of this by itself when you have a smaller AI. To start from random instead:
+`python -m gameai.all --size large --fresh`.
 Always-on learning keeps whatever size is in use. The Chromebook file stores the AI compactly
 (1 byte per weight plus a scale per row, about 4x smaller, same answers on 397 of 400 test requests);
 the PC keeps full precision.
 
 ## Playtesters and game quality
+
+Games have proper pause (P or Esc), win and game-over screens built from GameUI, styled to match the game's world (space is neon; dungeon, desert and volcano are pixel; forest, ocean and snow are cozy). They're real buttons, checked by the layout checker.
+
 
 Every new game is tested before you see it, by three testers (as in the research plan): an exact check that
 every goal can be reached, bots at three skill levels (beginner, average, expert) that play in fast-forward,

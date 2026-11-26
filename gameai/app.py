@@ -108,7 +108,8 @@ def page():
 
 
 def game_html(recipe):
-    tpl = open(os.path.join(os.path.dirname(__file__), "play_template.html"), encoding="utf-8").read()
+    from .export_web import play_template
+    tpl = play_template()
     return tpl.replace("/*GAMEAI_RECIPE*/", "window.GAMEAI_RECIPE=" + json.dumps(recipe) + ";")
 
 
