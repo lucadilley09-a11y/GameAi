@@ -109,18 +109,82 @@ def lora_to_gguf(adapter_dir, hf_dir, out):
     return out
 
 
-def quantize(f16, out, kind="Q4_K_M"):
+def make_imatrix(f16, calib_txt, out, chunks=100):
+    """an importance matrix: which weights matter most, measured on text like the AI's real work, so compression keeps
+    those more precise (Optimise phase: lower error at the same file size). Takes a few minutes on the GPU."""
+    q = exe("llama-imatrix")
+    if not q: raise RuntimeError("llama-imatrix isn't installed")
+    r = subprocess.run([q, "-m", f16, "-f", calib_txt, "-o", out, "--chunks", str(chunks), "-ngl", "99"],
+                       capture_output=True, text=True, creationflags=NO_WINDOW)
+    if r.returncode: raise RuntimeError("measuring the importance matrix failed: " + (r.stderr or r.stdout)[-800:])
+    return out
+
+
+def calibration_text(path, max_chars=600_000):
+    """text for the importance matrix: the AI's own kinds of work from the TRAINING splits only (never validation or
+    sealed sets): game requests, checked code, everyday conversation"""
+    import random
+    from .. import splits
+    rng, parts = random.Random(0), []
+    for coll in ("game_requests", "general", "real_talk"):
+        try: rows = splits.rows(coll, "train")
+        except Exception: rows = []
+        rng.shuffle(rows)
+        for r in rows[:1500]:
+            if r.get("messages"): parts.append("\n".join(m.get("content", "") for m in r["messages"]))
+            else: parts.append(" ".join(str(r.get(k, "")) for k in ("prompt", "text", "answer") if r.get(k)))
+    first = os.path.join("data", "coding", "first_pass.jsonl")
+    if os.path.exists(first):
+        for l in list(open(first, encoding="utf-8"))[:800]:
+            d = json.loads(l); parts.append(d["prompt"][-1500:] + "\n" + d["answer"])
+    rng.shuffle(parts)
+    text = "\n\n".join(p for p in parts if p.strip())[:max_chars]
+    if len(text) < 20_000:  # too little of our own text yet: GameKit's code and docs fill the gap
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for f in ("kit/gamekit.js", "kit/gamekit.d.ts"):
+            text += "\n\n" + open(os.path.join(here, *f.split("/")), encoding="utf-8").read()
+    open(path, "w", encoding="utf-8").write(text)
+    return path
+
+
+def quantize(f16, out, kind="Q4_K_M", imatrix=None):
     q = exe("llama-quantize")
     if not q: raise RuntimeError("llama-quantize isn't installed")
-    r = subprocess.run([q, f16, out, kind], capture_output=True, text=True, creationflags=NO_WINDOW)
+    r = subprocess.run([q] + (["--imatrix", imatrix] if imatrix else []) + [f16, out, kind], capture_output=True, text=True, creationflags=NO_WINDOW)
     if r.returncode: raise RuntimeError("compressing failed: " + (r.stderr or r.stdout)[-800:])
     return out
 
 
-class Server:
-    """llama-server on 127.0.0.1 only. Use as: with Server(gguf) as s: s.chat(...)"""
+TUNING = os.path.join("runtime", "tuning.json")
 
-    def __init__(self, gguf, mmproj=None, ctx=8192, port=8790, gpu_layers=99, extra=()):
+
+def tuned_flags(gguf):
+    """the speed settings measured best for this model file (Optimise phase), or none if it hasn't been measured"""
+    try: t = json.load(open(TUNING))
+    except (OSError, ValueError): return []
+    e = t.get(_model_id(gguf))
+    return list(e["flags"]) if e else []
+
+
+def _model_id(gguf):
+    return f"{os.path.basename(gguf)}:{os.path.getsize(gguf) if os.path.exists(gguf) else 0}"
+
+
+class Server:
+    """llama-server on 127.0.0.1 only. Use as: with Server(gguf) as s: s.chat(...)
+    tuned: add the speed settings measured for this model (tune()); cache_prompt: reuse the processed start of the
+    prompt between requests (the same instructions aren't processed again). The bake-off turns both off so every
+    candidate is measured the same plain way."""
+
+    def __init__(self, gguf, mmproj=None, ctx=8192, port=8790, gpu_layers=99, extra=(), tuned=True, cache_prompt=True):
+        extra = list(extra)
+        if tuned:
+            have = {x for x in extra if str(x).startswith("-")}
+            for i, f in enumerate(t := tuned_flags(gguf)):
+                if str(f).startswith("-") and f not in have:
+                    extra.append(f)
+                    if i + 1 < len(t) and not str(t[i + 1]).startswith("-"): extra.append(t[i + 1])
+        self.cache_prompt = cache_prompt
         self.args = [exe("llama-server"), "-m", gguf, "--host", "127.0.0.1", "--port", str(port), "-c", str(ctx), "-ngl", str(gpu_layers), "--jinja", "-np", "1", *extra]
         if mmproj: self.args += ["--mmproj", mmproj]
         if not self.args[0]: raise RuntimeError("llama-server isn't installed")
@@ -128,7 +192,8 @@ class Server:
 
     def __enter__(self):
         os.makedirs("logs", exist_ok=True)
-        self.p = subprocess.Popen(self.args, stdout=open(self.log, "w"), stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+        low = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)  # your programs come first
+        self.p = subprocess.Popen(self.args, stdout=open(self.log, "w"), stderr=subprocess.STDOUT, creationflags=NO_WINDOW | low)
         t0 = time.time()
         while time.time() - t0 < 600:
             if self.p.poll() is not None:
@@ -148,7 +213,7 @@ class Server:
 
     def chat(self, messages, max_tokens=256, grammar=None, thinking=None, temperature=0.0, timeout=600):
         """-> (text, info) where info has tokens per second, time to the first token and the token counts"""
-        body = {"messages": messages, "max_tokens": max_tokens, "temperature": temperature, "cache_prompt": False}
+        body = {"messages": messages, "max_tokens": max_tokens, "temperature": temperature, "cache_prompt": self.cache_prompt}
         if grammar: body["grammar"] = grammar
         if thinking is not None: body["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
         t = time.perf_counter()

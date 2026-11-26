@@ -20,7 +20,7 @@ from . import adapters, registry
 from .phase0 import runtime as R, tasks as T
 
 DIR = os.path.join("models", "releases")
-KEEP = 3
+KEEP = 2   # the release in use and the one before it (rollback)
 
 
 def _rid(cfg): return time.strftime("%Y%m%d-%H%M") + "-" + cfg
@@ -54,7 +54,8 @@ def build(cfg, skills=None, log=print):
         merged = os.path.join(out, "merged-hf")
         _merge(hf["path"], [adapters._dir(s, adapters.active(s)["version"]) for s in skills], merged)
         f16, _ = R.to_gguf(merged, out, log=log)
-        model = R.quantize(f16, os.path.join(out, "merged-q4_k_m.gguf"))
+        from .phase0.compress import best_q4
+        model, man["compression"] = best_q4(f16, os.path.join(out, "merged-q4_k_m.gguf"), log=log)  # plain vs importance matrix
         os.remove(f16); shutil.rmtree(merged, ignore_errors=True)  # lean storage: only the compressed file stays
         man["model"] = model
         man["skills"] = {s: {"version": adapters.active(s)["version"], "merged": True} for s in skills}

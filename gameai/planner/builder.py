@@ -128,7 +128,7 @@ def build_next(model, project, log=print):
             report, kind = f"No tests for this feature: add a test file ({TEST_NAMING[lang]}).", "instruction"; log(f"  try {attempt}: no tests"); continue
         res = atomic.change(project, edits)
         if not res["applied"]:
-            report, kind = res["report"], "failure"; log(f"  try {attempt}: not applied ({len(res['problems'])} problem(s))"); continue
+            report, kind = res["report"], "failure"; log(f"  try {attempt}: not applied: {(res['problems'] or ['?'])[0][:200]}"); continue
         r = debugger.run(project)  # the feature's own tests must pass too (the change check only stops things getting worse)
         mine = [t for t in r["tests"] if t.get("file") in tests]
         if not mine or not all(t.get("passed") for t in mine) or any(e["file"] in tests for e in r["load_errors"]):

@@ -65,7 +65,7 @@ def under_load(srv, n_items=30):
 def inference_tests(rec, hf_dir, gguf, mmproj, log=say):
     res = {}
     pipe = rec.get("pipeline") or ""
-    with R.Server(gguf, mmproj=mmproj) as srv:
+    with R.Server(gguf, mmproj=mmproj, tuned=False, cache_prompt=False) as srv:
         time.sleep(2)
         smi = nvidia_smi("memory.used")
         res["vram_in_use_gb"] = round(float(smi[0]) / 1024, 2) if smi else None
@@ -84,7 +84,7 @@ def inference_tests(rec, hf_dir, gguf, mmproj, log=say):
             except Exception as e: res[name] = {"not measured": str(e)[:300]}
             log("   ", res[name])
     try:  # fast drafting with the model's own extra prediction heads (multi-token prediction), where supported
-        with R.Server(gguf, extra=["--spec-type", "draft-mtp"]) as srv:
+        with R.Server(gguf, extra=["--spec-type", "draft-mtp"], tuned=False, cache_prompt=False) as srv:
             res["fast drafting (MTP)"] = T.test_recipes(srv.chat, T.recipe_items()[:30], thinking=False)
     except Exception as e:
         res["fast drafting (MTP)"] = {"not supported": str(e)[:200]}
@@ -122,7 +122,7 @@ def one(rec, minutes, log=say):
             stage(f"{key}: the trained adapter in llama.cpp")
             try:
                 lg = R.lora_to_gguf(ad, hf, os.path.join(work, "adapter.gguf"))
-                with R.Server(q4, extra=["--lora", lg]) as srv:
+                with R.Server(q4, extra=["--lora", lg], tuned=False, cache_prompt=False) as srv:
                     think = thinking_supported(hf)
                     res["adapter_in_runtime"] = {"loads": True, "adapter_mb": round(os.path.getsize(lg) / 2**20, 1),
                                                  **T.test_recipes(srv.chat, T.recipe_items()[:60], thinking=False if think else None)}

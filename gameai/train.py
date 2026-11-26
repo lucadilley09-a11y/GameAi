@@ -143,6 +143,23 @@ SIZE_DEFAULTS = {  # size: (steps, batch, AdamW lr, Muon lr)
 }
 
 
+def maybe_compile(model, mode="auto", device="cuda"):
+    """-> (model to call, what happened). Compiling fuses the model's small steps into fewer GPU kernels (research: up
+    to ~2x faster steps for small transformers). It needs Triton, which on Windows is the triton-windows package; if
+    anything is missing it's skipped, and the results are the same either way."""
+    import torch
+    if mode == "off": return model, "off"
+    if device != "cuda": return model, "skipped (no GPU)"
+    try:
+        import triton  # noqa: F401  (triton-windows on Windows)
+    except ImportError:
+        return model, "skipped (Triton isn't installed; the autopilot's speed-up step installs it)"
+    try:
+        return torch.compile(model), "on (the first step takes about a minute longer while it compiles)"
+    except Exception as e:
+        return model, f"skipped ({str(e).splitlines()[0][:120]})"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--size", default="small")
@@ -151,7 +168,8 @@ def main():
     ap.add_argument("--lr", type=float, default=None, help="AdamW learning rate")
     ap.add_argument("--muon-lr", type=float, default=None)
     ap.add_argument("--no-muon", action="store_true")
-    ap.add_argument("--compile", action="store_true", help="torch.compile (Linux/WSL; usually unavailable on native Windows)")
+    ap.add_argument("--compile", choices=["auto", "on", "off"], default="auto",
+                    help="torch.compile: auto = use it when it works here (on Windows it needs triton-windows), else carry on without")
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--patience", type=int, default=6)
     ap.add_argument("--data", default="data")
@@ -217,7 +235,9 @@ def main():
         opts = [Muon(mu, lr=a.muon_lr, weight_decay=0.01), torch.optim.AdamW(ad, lr=a.lr, betas=(0.9, 0.95), weight_decay=0.0)]
     for o in opts:
         for g in o.param_groups: g["base_lr"] = g["lr"]
-    fwd = torch.compile(model) if a.compile else model
+    fwd, how = maybe_compile(model, a.compile, device)
+    print(f"torch.compile: {how}", flush=True)
+    eager = model  # used instead if the compiled version fails on its first step
     amp = torch.autocast("cuda", dtype=torch.bfloat16) if device == "cuda" else torch.autocast("cpu", enabled=False)
 
     cfg = vars(a) | {"params": n_params, "device": device, "grammar_version": GRAMMAR_VERSION, "model": model.config_dict()}
@@ -230,6 +250,8 @@ def main():
         torch.save({"model": model.state_dict(), "config": model.config_dict(), "tokenizer": tok.itos,
                     "grammar_version": GRAMMAR_VERSION, "run": run.id, "size": a.size}, ck_path)
 
+    from . import polite
+    polite.lower_priority(); gate = polite.Gate(log=lambda m: print(m, flush=True))
     best, bad, t0, ema = float("inf"), 0, time.time(), None
     for step in range(a.steps):
         for o in opts:
@@ -243,8 +265,17 @@ def main():
                 loss = 0.0
                 for c in idx.split(micro):
                     xb, yb, P = train_d.batch(c)
-                    with amp:
-                        part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
+                    try:
+                        with amp:
+                            part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
+                    except torch.OutOfMemoryError:
+                        raise
+                    except Exception as e:  # compiling failed on this PC: carry on without it (same results, just slower)
+                        if fwd is eager: raise
+                        print(f"torch.compile didn't work here ({str(e).splitlines()[0][:150]}); training without it", flush=True)
+                        fwd = eager
+                        with amp:
+                            part = recipe_loss(fwd, xb, yb, P, n_out) * (len(c) / len(idx))
                     part.backward(); loss = loss + part.detach()
                 break
             except torch.OutOfMemoryError:
@@ -258,6 +289,7 @@ def main():
                 print(f"The GPU ran out of memory, so training uses smaller pieces now ({micro} at a time). Same result, a bit slower.", flush=True)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         for o in opts: o.step()
+        gate.after_step()  # slows down while you're using the PC (polite.py)
         ema = loss.detach() if ema is None else 0.98 * ema + 0.02 * loss.detach()  # stays on the GPU: no waiting every step
         if step % 10 == 0 or step + 1 == a.steps:
             ema = float(ema)

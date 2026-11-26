@@ -37,6 +37,8 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     ("bakeoff", "testing the candidate AI models (hours)", "bakeoff", ["gameai.autopilot", "run", "bakeoff"]),
     ("choose", "choosing the best model", None, ["gameai.autopilot", "run", "choose"]),
     ("install", "installing the chosen model", None, ["gameai.autopilot", "run", "install"]),
+    ("speedups", "installing the training speed-ups (Triton for Windows, Unsloth) and timing them", None, ["gameai.autopilot", "run", "speedups"]),
+    ("tune", "measuring the fastest answer settings for your AI (about 15 minutes)", None, ["gameai.autopilot", "run", "tune"]),
     ("mix", "testing how much everyday data to mix in (about 2 hours)", None, ["gameai.autopilot", "run", "mix"]),
     ("adapter", "training the game-design skill (about 2 hours)", None, ["gameai.autopilot", "run", "adapter"]),
     ("release", "making and checking the first release", None, ["gameai.autopilot", "run", "release"]),
@@ -181,6 +183,18 @@ def run(sid):
         pick, why = release.compare(a, b); print(why)
         m = release.finish(pick["id"])
         if m.get("blocked"): raise SystemExit(m["blocked"])
+        if m.get("model") and os.path.exists(m["model"]):  # the released model file is new: measure its fastest settings too
+            from .phase0 import tune
+            tune.tune(m["model"])
+    elif sid == "speedups":
+        from . import registry
+        from .phase0 import speedups
+        speedups.install()
+        speedups.choose(registry.load()["entries"]["core_hf"]["path"])
+    elif sid == "tune":
+        from . import registry
+        from .phase0 import tune
+        tune.tune(registry.load()["entries"]["core"]["path"])
     elif sid.startswith("code"):
         code_step(sid)
     else:

@@ -99,7 +99,7 @@ def archive(result):
     n = int(have[-1][1:4]) + 1 if have else 1
     shutil.copy("models/current.pt", f"models/versions/v{n:03d}.pt")
     json.dump(dict(result, version=n, time=time.time()), open(f"models/versions/v{n:03d}.json", "w"), indent=1)
-    for old in have[:-19]:  # keep the last 20
+    for old in have[:-9]:  # keep the last 10 (storage.py does the same)
         for ext in (".pt", ".json"):
             f = "models/versions/" + old[:-3] + ext
             if os.path.exists(f): os.remove(f)

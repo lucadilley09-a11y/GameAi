@@ -304,3 +304,21 @@ For bigger games, built over many sessions (plan: Phase 4):
 mutation-tested (small bugs are put into the correct solution; tests that miss more than 30% of them are dropped).
 After the code skills are trained, a GRPO trial lets the AI learn straight from test results for about 1.5 hours,
 starting from the code skill in use; the result is kept only if it solves more validation tasks.
+
+## Speed, storage and sharing the PC (Optimise phase)
+
+Everything here runs by itself; each speed change is measured on your PC and kept only if it is faster with the
+answers no worse.
+
+- **Answers:** prompt caching is on; the autopilot measures flash attention, an 8-bit context cache and n-gram
+  speculation for your model and keeps the fastest that doesn't change the answers (`runtime\tuning.json`).
+- **Compression:** the 4-bit model is made both plainly and with an importance matrix measured on the AI's own kind
+  of work; the better one on validation is kept (same size).
+- **Training:** batches group examples of similar length (less wasted padding); Unsloth is installed and used for
+  adapter training if it's measurably faster with the same loss; Triton for Windows lets the from-scratch game AI
+  use torch.compile. Anything that doesn't work on your PC is removed again and training carries on as before.
+- **Sharing the PC:** training and learning run at low priority and slow down while you use the PC (half speed;
+  mostly paused during games or full-screen apps), then go full speed when you're away. Results are the same.
+- **Storage:** old downloads, checkpoints, leftovers and versions beyond the last 10 are cleaned after every
+  autopilot step and daily. The base model's multi-GB training copy is removed when unused for 3 days and
+  downloaded again (same version) when training needs it. `/storage` shows what uses space; `/storage clean` cleans now.

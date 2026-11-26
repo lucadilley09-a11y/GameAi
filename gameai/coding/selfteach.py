@@ -50,14 +50,25 @@ def answer_of(task, code):
     return f"```{prompts.FENCE[task['lang']]}\n{code.rstrip()}\n```"
 
 
+_g = None
+def _gate():
+    global _g
+    if _g is None:
+        from .. import polite
+        polite.lower_priority(); _g = polite.Gate(log=lambda m: print(m, flush=True))
+    return _g
+
+
 def attempt(chat, task, n, temperature=0.8, code=None, report=None):
     """n answers from the model -> [verify results]"""
     out = []
+    gate = _gate()
     for i in range(n):
         try: text = _text(chat(prompts.messages(task, code, report), max_tokens=1500, thinking=False, temperature=temperature if n > 1 else 0.0))
         except Exception as e:  # a model error is a failed attempt, not a crash
             text = f"(no answer: {e})"
         out.append(verify(task, text))
+        gate.after_step()  # slows down while you're using the PC (polite.py)
     return out
 
 

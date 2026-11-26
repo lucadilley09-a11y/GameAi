@@ -64,6 +64,8 @@ def main():
     random.seed(a.seed); torch.manual_seed(a.seed)
     tasks = pick_tasks()
     if len(tasks) < int(os.environ.get("GAMEAI_GRPO_MIN_TASKS", 10)): raise SystemExit(f"only {len(tasks)} tasks are in the useful middle (solved sometimes); practise more first")
+    from .. import storage
+    storage.ensure_training_copy(lambda m: print(m, flush=True))  # it may have been removed to save space
     four = base_precision(a.base) != "bf16"
     print(f"Loading the base model ({'4-bit' if four else '16-bit'}) and the code adapter in use...", flush=True)
     model, tok = load(a.base, four_bit=four)
@@ -73,6 +75,8 @@ def main():
         raise SystemExit("train the code skill first: the GRPO trial starts from the code adapter in use")
     model = PeftModel.from_pretrained(model, adapters._dir("code", act["version"]), is_trainable=True) if act else add_lora(model, four_bit=four)
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=LR, weight_decay=0.0)
+    from .. import polite
+    polite.lower_priority(); gate = polite.Gate(log=lambda m: print(m, flush=True))
     end, step, t0, rewards_log = time.time() + a.minutes * 60, 0, time.time(), []
     print(f"GRPO trial: {len(tasks)} tasks, {GROUP} answers each, {a.minutes:.0f} minutes", flush=True)
 
@@ -106,6 +110,7 @@ def main():
             loss.backward()
         torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 1.0)
         opt.step(); opt.zero_grad(set_to_none=True); step += 1
+        gate.after_step()
         if step % 5 == 0:
             recent = rewards_log[-20:]
             print(f"  step {step}, {(time.time() - t0) / 60:.0f} min: answers passing (last 20 groups) {sum(recent) / len(recent):.0%}", flush=True)

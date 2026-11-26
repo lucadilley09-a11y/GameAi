@@ -120,6 +120,44 @@ def validate(model, tok, skill, device, n=300):
     return out
 
 
+def unsloth_model(base, four, seed):
+    """the same LoRA (rank, alpha, all linear layers, the same exclusions) through Unsloth's faster kernels"""
+    import torch
+    from unsloth import FastLanguageModel
+    from .phase0.qlora import LORA
+    model, tok = FastLanguageModel.from_pretrained(model_name=base, load_in_4bit=four, dtype=torch.bfloat16, max_seq_length=4096)
+    model = FastLanguageModel.get_peft_model(model, r=LORA["r"], lora_alpha=LORA["lora_alpha"], lora_dropout=0.0,
+                                             target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                                             use_gradient_checkpointing="unsloth", random_state=seed)
+    if tok.pad_token_id is None: tok.pad_token = tok.eos_token
+    return model, tok
+
+
+def _length(r):
+    return len(r.get("system", "")) + len(r.get("prompt", "")) + len(r.get("answer", ""))
+
+
+_sorted = {}
+def grouped_batch(skill_rows, gen_rows, share, size, rng, length=_length):
+    """A batch of rows of similar length (Optimise phase: every row in a batch is padded to the longest one, so mixing a
+    short row with a long one wastes most of the work; research: removing padding gave over 2x). Each slot is still a
+    general row with probability `share`, so the mix stays the same; only which rows end up together changes."""
+    def pool(rows):
+        key = (id(rows), len(rows))
+        if key not in _sorted: _sorted[key] = sorted(rows, key=length)
+        return _sorted[key]
+    sk, ge = pool(skill_rows), pool(gen_rows) if gen_rows else []
+    q = rng.random()  # where in the length order this batch sits
+    out = []
+    for _ in range(size):
+        p = ge if ge and rng.random() < share else sk
+        band = max(size * 2, len(p) // 50)
+        centre = int(q * (len(p) - 1))
+        lo, hi = max(0, centre - band), min(len(p), centre + band + 1)
+        out.append(p[rng.randrange(lo, hi)])
+    return out
+
+
 def base_precision(base_dir):
     """how this base model trains: '16-bit' ('bf16') or 4-bit QLoRA ('qlora'), from the model choice (research: Qwen3.5
     shouldn't be trained in 4-bit). Falls back to the candidate list by folder name, then to QLoRA."""
@@ -138,6 +176,8 @@ def main():
     ap.add_argument("--minutes", type=float, default=120); ap.add_argument("--general", type=float, default=0.3)
     ap.add_argument("--batch", type=int, default=8); ap.add_argument("--accum", type=int, default=2); ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--general-source", choices=["data", "self"], default="data")
+    ap.add_argument("--backend", choices=["auto", "transformers", "unsloth"], default="auto", help="auto: what the speed test chose (runtime/training.json)")
+    ap.add_argument("--bench-steps", type=int, default=0, help="only time this many steps and report (used by the speed test)")
     ap.add_argument("--ckpt-minutes", type=float, default=10); ap.add_argument("--resume", action="store_true"); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     import torch
@@ -151,10 +191,23 @@ def main():
     state = torch.load(os.path.join(work, "trainer_state.pt"), weights_only=False) if a.resume and os.path.exists(os.path.join(work, "trainer_state.pt")) else None
     if state: a.__dict__.update({k: v for k, v in state["args"].items() if k not in ("resume", "minutes")})
     random.seed(a.seed); torch.manual_seed(a.seed)
+    from . import storage
+    if os.path.normpath(a.base) == os.path.normpath((__import__("gameai.registry", fromlist=["load"]).load()["entries"].get("core_hf") or {}).get("path", "")):
+        storage.ensure_training_copy(lambda m: print(m, flush=True))  # it may have been removed to save space
     four = base_precision(a.base) != "bf16"
-    print(f"Loading the base model ({a.base}, {'4-bit QLoRA' if four else '16-bit LoRA'})...", flush=True)
-    model, tok = load(a.base, four_bit=four)
-    if state:
+    from .phase0 import speedups
+    use_unsloth = (speedups.backend() if a.backend == "auto" else a.backend) == "unsloth" and not state and device == "cuda"
+    print(f"Loading the base model ({a.base}, {'4-bit QLoRA' if four else '16-bit LoRA'}{', Unsloth' if use_unsloth else ''})...", flush=True)
+    if use_unsloth:
+        try:
+            model, tok = unsloth_model(a.base, four, a.seed)
+        except Exception as e:  # Unsloth can't handle this model here: the standard way, same results
+            print(f"Unsloth couldn't load this model ({str(e).splitlines()[0][:150]}); using the standard trainer", flush=True)
+            use_unsloth = False
+    if not use_unsloth:  # (Unsloth's model already has its LoRA)
+        model, tok = load(a.base, four_bit=four)
+    if use_unsloth: pass
+    elif state:
         from peft import PeftModel
         if torch.cuda.is_available() and four:
             from peft import prepare_model_for_kbit_training
@@ -175,15 +228,26 @@ def main():
         opt.load_state_dict(state["opt"]); step, done_s = state["step"], state["seconds"]
         rng.setstate(state["rng"]); torch.set_rng_state(state["torch_rng"])
     t0 = time.time() - done_s; end = t0 + (done_s + a.minutes * 60 if state else a.minutes * 60); last_ck = time.time()
+    if a.bench_steps: end = float("inf")
     model.train()
+    from . import polite
+    polite.lower_priority(); gate = polite.Gate(log=lambda m: print(m, flush=True))
     print(f"Training the {a.skill} adapter: {len(skill_rows)} skill examples, {len(gen_rows)} general ({a.general:.0%} of each batch)", flush=True)
     while time.time() < end:
         for _ in range(a.accum):
-            batch = [rng.choice(gen_rows) if gen_rows and rng.random() < a.general else rng.choice(skill_rows) for _ in range(a.batch)]
+            batch = grouped_batch(skill_rows, gen_rows, a.general if gen_rows else 0.0, a.batch, rng)
             ids, lab, att = collate([encode(tok, r) for r in batch], tok.pad_token_id, device)
             (model(input_ids=ids, attention_mask=att, labels=lab).loss / a.accum).backward()
         for g in opt.param_groups: g["lr"] = a.lr * min(1.0, (step + 1) / 20)
         opt.step(); opt.zero_grad(set_to_none=True); step += 1
+        if a.bench_steps:
+            if step == 3: t_bench = time.time()  # the first steps include warm-up
+            if step >= a.bench_steps + 3:
+                with torch.no_grad(): last = model(input_ids=ids, attention_mask=att, labels=lab).loss.item()
+                print("@@BENCH" + json.dumps({"s_per_step": round((time.time() - t_bench) / a.bench_steps, 4), "loss": round(last, 4)}), flush=True)
+                return
+            continue
+        gate.after_step()  # slows down while you're using the PC (polite.py)
         if os.environ.get("GAMEAI_PROGRESS") and step % 5 == 0:
             print("@@P" + json.dumps({"step": int(time.time() - t0), "total": int(end - t0), "loss": None}), flush=True)
         if time.time() - last_ck > a.ckpt_minutes * 60:

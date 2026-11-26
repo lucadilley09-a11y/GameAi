@@ -141,6 +141,8 @@ def main():
     t0 = time.time()
     print(f"=== Teacher ({repo}) writing natural examples ===", flush=True)
     with open("data/teacher.jsonl", "a") as ftrain, open("data/test_teacher.jsonl", "a") as ftest:
+        from . import polite
+        polite.lower_priority(); gate = polite.Gate(log=lambda m: print(m, flush=True))
         while kept < a.n:
             labels = []
             while len(labels) < a.batch:
@@ -148,6 +150,7 @@ def main():
                 if spec(lab) and is_valid_out(lab) and not (lab["enemy"] == "none" and lab["goal"] == "survive"):
                     labels.append(lab)
             styles = [rng.choice(STYLES) for _ in labels]
+            gate.after_step()  # slows down while you're using the PC (polite.py)
             prompts = chat(tok, model, [write_prompt(spec(l), s) for l, s in zip(labels, styles)], 70)
             checks = chat(tok, model, [check_prompt(p) for p in prompts], 70, sample=False)
             for lab, st, p, c in zip(labels, styles, prompts, checks):

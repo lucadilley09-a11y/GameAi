@@ -12,7 +12,7 @@ as today's game AI). The last 20 versions of every skill are kept; rollback pick
 import json, os, shutil, time
 
 ROOT = os.path.join("models", "adapters")
-KEEP = 20
+KEEP = 8   # versions kept for rollback (storage: adapters in use are always kept)
 
 
 def _dir(skill, v=None):

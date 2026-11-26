@@ -189,6 +189,8 @@ def make_tasks(chat, n, log=print, stop=lambda: False, rng=None):
     langs = ["js"] * 5 + ["py"] * 2 + ["lua"] * 3   # mostly the language the games use
     while kept < n and tried < n * 4 and not stop():
         tried += 1
+        from .selfteach import _gate
+        _gate().after_step()
         lang = rng.choice(langs); topic = rng.choice(TOPICS[lang])
         try: text = _text(chat(task_prompt(lang, topic, seeds[EXAMPLE_IDS[lang]]), max_tokens=3000, thinking=False, temperature=0.9))
         except Exception: continue

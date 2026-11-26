@@ -138,6 +138,9 @@ class H(BaseHTTPRequestHandler):
                     + open(ex, encoding="utf-8").read() + "\nconst cv=document.getElementById('c'),g=build(cv,(Math.random()*1e9)|0);cv.width=g.o.width;cv.height=g.o.height;"
                     "if(location.search.includes('play'))g.start();else(function loop(){g.draw();if(g.state==='title')requestAnimationFrame(loop)})();</script>")
             return self.send(200, html, "text/html; charset=utf-8")
+        if path == "/api/storage":
+            from . import storage
+            return self.send(200, {"text": storage.text_report()})
         if path == "/api/kit":
             d = os.path.join(os.path.dirname(__file__), "kit", "examples")
             return self.send(200, {"examples": sorted(f[:-3] for f in os.listdir(d) if f.endswith(".js"))})
@@ -199,6 +202,11 @@ class H(BaseHTTPRequestHandler):
             try: autopilot.answer(str(b.get("id", "")), str(b.get("choice", "")))
             except (ValueError, KeyError) as e: return self.send(400, {"error": str(e)})
             return self.send(200, {"ok": True, "autopilot": autopilot_status()})
+        if path == "/api/storage":
+            from . import storage
+            if STATE["job"]["running"]: return self.send(409, {"error": "A job is running; cleaning waits until it's done (it also runs by itself every day)."})
+            freed = storage.clean(log=lambda m: None)
+            return self.send(200, {"freed_gb": round(freed / 2**30, 2), "text": storage.text_report()})
         if path == "/api/auto":
             from . import autopilot
             st = autopilot.load(); st["on"] = bool(b.get("on", True))
@@ -601,10 +609,25 @@ def autopilot_loop():
             j = STATE["job"]
             if j.get("stopped"): continue  # you stopped it: not a failure, it carries on later
             autopilot.finished(sid, bool(j.get("ok")), " / ".join(l for l in j.get("log", [])[-3:] if l))
+            tidy(force=True)  # downloads, checkpoints and leftovers from that step
         except Exception as e:
             STATE["auto_error"] = str(e)
         finally:
             STATE["auto_step"] = None
+            if not STATE["job"]["running"]: tidy()
+
+
+def tidy(force=False):
+    """storage cleaning (storage.py): after every autopilot step, and once a day; never while a job runs"""
+    if STATE["job"]["running"]: return
+    if not force and time.time() - STATE.get("tidied", 0) < 86400: return
+    STATE["tidied"] = time.time()
+    try:
+        from . import storage
+        freed = storage.clean(log=lambda m: None)
+        if freed > 200 * 2**20: STATE["note"] = f"Freed {freed / 2**30:.1f} GB of storage (old downloads, checkpoints and leftovers)."
+    except Exception as e:
+        STATE["tidy_error"] = str(e)[:200]
 
 
 def main():

@@ -91,13 +91,14 @@ def install(key=None, log=say):
     log(f"Downloading {key} ({rec['download_gb']} GB)..."); C.download(rec, hf)
     vision = "image" in (rec.get("pipeline") or "")
     f16, mm = R.to_gguf(hf, base, log=log, vision=vision)
-    q4 = R.quantize(f16, os.path.join(base, "model-q4_k_m.gguf")); os.remove(f16)
+    from .compress import best_q4
+    q4, comp = best_q4(f16, os.path.join(base, "model-q4_k_m.gguf"), log=log); os.remove(f16)
     res = next((r for r in load_results() if r["candidate"]["key"] == key), {})
     vram = _g(res, "tests", "vram_in_use_gb") or round(os.path.getsize(q4) / 2**30 + 1.2, 2)
     registry.register("core", "base", "core model: chat, understanding, planning, code", q4, vram, rec["license"], rec["revision"][:10], "gguf",
                       repo=rec["repo"], mmproj=mm)
     registry.register("core_hf", "base", "core model, training format (not loaded for use)", hf, 0, rec["license"], rec["revision"][:10], "hf", repo=rec["repo"],
-                      key=key, precision=C.by_key(key).get("precision", "qlora"))
+                      key=key, precision=C.by_key(key).get("precision", "qlora"), revision=rec["revision"])
     for old in glob.glob(os.path.join("models", "base", "*")):
         if os.path.basename(old) != key: __import__("shutil").rmtree(old, ignore_errors=True)  # lean storage: one base at a time
     return {"installed": key, "gguf": q4, "vision_file": mm, "vram_gb": vram}
