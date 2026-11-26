@@ -371,3 +371,46 @@ The AI learns to build screens with it the same way it learns code:
   4 per request); a rejected screen gets one fix attempt with the checker's report, and good fixes are kept too.
 - The autopilot runs **ui_practice** then **ui_train** (the `ui` skill); the new version is used only if it builds more
   validation screens correctly.
+
+
+## Local developer tools (MCP server)
+
+The workbench tools are exposed to desktop agents through a **local MCP stdio server**. The server is launched as a child process by the desktop app; it does not open an HTTP port, add browser-callable endpoints, or accept commands from websites. All file paths are resolved inside the configured workspace, model weights and dataset folders are excluded from search, and command execution is limited to a fixed allow-list.
+
+Tools available over MCP:
+
+- `shrink_file(file, max_chars=12000, mode="auto")`: compacts repeated lines and keeps error context without editing the original.
+- `search_files(query, pattern="**/*")`: returns matching lines and line numbers; skips models, datasets, caches, build output and binary files.
+- `file_map(file)`: outlines Python symbols, JavaScript/TypeScript declarations, or Markdown headings.
+- `errors_only(command)`: runs only approved diagnostic commands without a shell and returns error context plus final output.
+- `vault_save(title, content, tags=[], links=[])` / `vault_search(query)`: stores standalone Markdown notes under `memory/vault/`, with Obsidian-compatible `[[wikilinks]]`.
+- `run_command(name, args=[])`: runs fixed commands (`tests`, `compile`, `git-status`, `git-diff`, `list`). `tests` uses Game AI's own sandboxed game-test runner and accepts an optional game-project folder.
+- `batch(operations)`: runs up to 20 approved workbench operations sequentially and stops on the first error.
+
+### Claude Desktop setup (Windows)
+
+1. Find the folder containing this `README.md` (the Game AI project root).
+2. Open Claude Desktop's MCP configuration file and add this server, replacing both paths with your actual Game AI folder and Python executable:
+
+```json
+{
+  "mcpServers": {
+    "gameai-workbench": {
+      "command": "C:\\Users\\jusdi\\Downloads\\gameai-phase2\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\jusdi\\Downloads\\gameai-phase2\\gameai_mcp.py",
+        "--root",
+        "C:\\Users\\jusdi\\Downloads\\gameai-phase2"
+      ]
+    }
+  }
+}
+```
+
+3. Fully restart Claude Desktop. It should show the `gameai-workbench` tools in its MCP tools list.
+
+If the project does not have a `.venv`, use the Python executable that can import the packages Game AI needs. The MCP server itself uses only Python's standard library.
+
+### Notes and updates
+
+Vault notes are normal Markdown files in `memory/vault/`, not a JSONL database. They can be opened directly in Obsidian. The new MCP module and launcher are ordinary project source files, so the project's existing updater manifest can include them in a published release; they are not installed by unzipping over an existing copy. The server is separate from the trained Game AI model: it gives Claude desktop tools to call, but it does not teach the trained model to autonomously choose tools.
