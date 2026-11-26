@@ -94,9 +94,10 @@ def validate(model, tok, skill, device, n=300):
             out[name] = {"score": round(val_exact(model, tok, rows[:min(len(rows), 100)], RECIPE_SYSTEM, device)["fully_right"], 4), "n": min(len(rows), 100)}
     if skill in ("code", "code_repair"):  # the real measure: validation tasks solved, checked in the sandbox
         from .coding import evaluate
+        from .phase0.qlora import chat_ids
         def generate(messages):
             import torch
-            ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", enable_thinking=False).to(device)
+            ids = chat_ids(tok, messages).to(device)
             model.eval()
             with torch.no_grad(): out_ids = model.generate(ids, max_new_tokens=900, do_sample=False)
             model.train()
@@ -119,6 +120,18 @@ def validate(model, tok, skill, device, n=300):
     return out
 
 
+def base_precision(base_dir):
+    """how this base model trains: '16-bit' ('bf16') or 4-bit QLoRA ('qlora'), from the model choice (research: Qwen3.5
+    shouldn't be trained in 4-bit). Falls back to the candidate list by folder name, then to QLoRA."""
+    from . import registry
+    from .phase0 import candidates as C
+    e = registry.load()["entries"].get("core_hf") or {}
+    if e.get("precision") and os.path.normpath(e.get("path", "")) == os.path.normpath(base_dir): return e["precision"]
+    key = os.path.basename(os.path.dirname(os.path.normpath(base_dir)))  # models/base/<key>/hf
+    try: return C.by_key(key).get("precision", "qlora")
+    except Exception: return "qlora"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skill", required=True); ap.add_argument("--base", required=True, help="folder with the base model (Hugging Face format)")
@@ -138,17 +151,20 @@ def main():
     state = torch.load(os.path.join(work, "trainer_state.pt"), weights_only=False) if a.resume and os.path.exists(os.path.join(work, "trainer_state.pt")) else None
     if state: a.__dict__.update({k: v for k, v in state["args"].items() if k not in ("resume", "minutes")})
     random.seed(a.seed); torch.manual_seed(a.seed)
-    print(f"Loading the base model ({a.base})...", flush=True)
-    model, tok = load(a.base)
+    four = base_precision(a.base) != "bf16"
+    print(f"Loading the base model ({a.base}, {'4-bit QLoRA' if four else '16-bit LoRA'})...", flush=True)
+    model, tok = load(a.base, four_bit=four)
     if state:
         from peft import PeftModel
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and four:
             from peft import prepare_model_for_kbit_training
             model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+        elif torch.cuda.is_available():
+            model.gradient_checkpointing_enable(); model.enable_input_require_grads()
         model = PeftModel.from_pretrained(model, work, is_trainable=True)
         print(f"Carrying on from step {state['step']}", flush=True)
     else:
-        model = add_lora(model)
+        model = add_lora(model, four_bit=four)
     skill_rows = filter_training(chat_rows(a.skill), label=a.skill)
     gen_rows = filter_training(general_rows(a.general_source), label="general") if a.general > 0 else []
     if a.general > 0 and not gen_rows:

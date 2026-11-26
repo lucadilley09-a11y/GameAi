@@ -43,9 +43,11 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     # Phase 4: the code skill
     ("coding_teacher", "choosing the coding teacher (tests up to 3 free models; downloads one at a time)", None, ["gameai.autopilot", "run", "coding_teacher"]),
     ("code_tasks", "the teacher writing coding practice tasks (checked in the sandbox)", None, ["gameai.autopilot", "run", "code_tasks"]),
+    ("code_seal", "checking that the new validation tests catch bugs (mutation testing)", None, ["gameai.autopilot", "run", "code_seal"]),
     ("code_practice", "practising code: many tries per task, only checked solutions kept (hours)", None, ["gameai.autopilot", "run", "code_practice"]),
     ("code_train", "training the coding skills: first tries and repairs, separately (about 3 hours)", None, ["gameai.autopilot", "run", "code_train"]),
     ("code_strategy", "comparing repairing code with simply trying again, at the same cost", None, ["gameai.autopilot", "run", "code_strategy"]),
+    ("code_grpo", "a trial of learning straight from test results (GRPO, about 1.5 hours; kept only if it does better)", None, ["gameai.autopilot", "run", "code_grpo"]),
 ]
 
 
@@ -234,6 +236,21 @@ def code_step(sid):
         _train("code", 120, best["share"], best["source"])
         if len(selfteach.rows("repair")) >= 30: _train("code_repair", 60, best["share"], best["source"])
         else: print("not enough checked repairs yet to train the repair skill; it trains in a later round")
+    elif sid == "code_seal":
+        from .coding import mutation
+        mine = [t for t in T.load("val") if t.get("source") == "teacher"]
+        good, weak = mutation.finalize(mine)
+        if weak:  # validation suites that miss bugs are dropped: they can't be trusted to measure the AI
+            keep = {t["id"] for t, _ in good}
+            rows = [t for t in mine if t["id"] in keep]
+            os.replace(T.path("val"), T.path("val") + ".before_mutation_check")
+            for t in rows: T.add(t)
+        print(f"{len(good)} validation tasks kept, {len(weak)} dropped because their tests miss too many bugs")
+    elif sid == "code_grpo":
+        import subprocess
+        from . import registry
+        from .sub import run
+        if run(["gameai.coding.grpo", "--base", registry.load()["entries"]["core_hf"]["path"], "--minutes", "90"]): raise SystemExit("the GRPO trial failed")
     elif sid == "code_strategy":
         with _core_server("code") as core:
             compare.run(core.chat)

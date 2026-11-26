@@ -299,3 +299,8 @@ For bigger games, built over many sessions (plan: Phase 4):
   `python -m gameai.planner status my_game`
 - **Component library:** finished features' code becomes checked components (only if their own tests pass, no
   near-copies), and matching ones are offered to the AI in later projects. `python -m gameai.planner components`
+
+**Extra checks for code training:** before the teacher's new validation tasks are used, their tests are
+mutation-tested (small bugs are put into the correct solution; tests that miss more than 30% of them are dropped).
+After the code skills are trained, a GRPO trial lets the AI learn straight from test results for about 1.5 hours,
+starting from the code skill in use; the result is kept only if it solves more validation tasks.

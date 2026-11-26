@@ -21,6 +21,7 @@ from .verify import verify, similarity
 
 DIR = T.DIR
 FILES = {"first": os.path.join(DIR, "first_pass.jsonl"), "repair": os.path.join(DIR, "repair.jsonl"), "pairs": os.path.join(DIR, "pairs.jsonl")}
+STATS = os.path.join(DIR, "practice_stats.jsonl")
 CAP = 4              # accepted solutions kept per task
 SAME = 0.95          # similarity at which two solutions count as the same
 REPAIRS_PER_TASK = 3 # failed attempts that get a repair try
@@ -72,6 +73,9 @@ def teach_task(chat, task, n=16, source="self", seen=None, log=print):
         kept.append(r)
     stats = {"task": task["id"], "lang": task["lang"], "tries": n, "passed": sum(r["accepted"] for r in results), "kept": len(kept),
              "repairs_tried": 0, "repairs_ok": 0, "pairs": 0}
+    os.makedirs(DIR, exist_ok=True)
+    with open(STATS, "a", encoding="utf-8") as f:  # how hard each task is for the AI (the GRPO trial picks the in-between ones)
+        f.write(json.dumps({"task": task["id"], "source": source, "tries": n, "passed": stats["passed"], "time": time.strftime("%Y-%m-%d %H:%M")}) + "\n")
     for r in kept:
         h = _hash("first", task["id"], r["code"])
         if h in seen: continue

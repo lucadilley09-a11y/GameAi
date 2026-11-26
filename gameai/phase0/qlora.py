@@ -20,6 +20,13 @@ def _cap_gpu(torch):
     torch.cuda.set_per_process_memory_fraction(max(0.05, min(0.95, (free + torch.cuda.memory_reserved() - 400 * 2**20) / total)))
 
 
+def chat_ids(tok, messages):
+    """the prompt's token ids (1 x n) for generating a reply; transformers 5 returns a dict here, older versions a tensor"""
+    try: out = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", return_dict=True, enable_thinking=False)
+    except TypeError: out = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", return_dict=True)
+    return out["input_ids"] if hasattr(out, "keys") else out
+
+
 def load(hf_dir, four_bit=True):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer

@@ -103,6 +103,28 @@ def main():
         all_tasks = T.load("train") + [x for x in T.load("val") if x.get("source") == "teacher"]
         t("the teacher's tasks: only sound, new ones are kept", kept == 1 and len(all_tasks) == 1 and all_tasks[0]["file"] == "streak.js", (kept, len(all_tasks)))
         t("a wrong reference is rejected by the task check", T.check_task(broken))
+        # mutation testing (offline, before suites are finalized)
+        from gameai.coding import mutation as M, grpo as G
+        ms = M.mutants("js", "const s = 'a+b'; // x+y\nfunction f(a, b) { return a + b < 10; }\n")
+        t("mutants change real code, never strings or comments", ms and all("'a+b'" in m and "// x+y" in m for _, m in ms), ms)
+        t("Python and Lua mutants use their own operators", any("~=" in m for _, m in M.mutants("lua", "local x = a == b\n")) and
+          any("!=" in m for _, m in M.mutants("py", "x = a == b\n")))
+        weak = json.loads(json.dumps(by["js-clamp-health"])); weak["hidden"] = {"health.hidden.test.js": "import { heal } from './health.js';\ntest('runs', () => expect(typeof heal(1, 1, 5)).toBe('number'));\ntest('again', () => expect(typeof heal(2, 1, 5)).toBe('number'));\n"}
+        weak["tests"] = {"health.test.js": "import { heal } from './health.js';\ntest('exists', () => expect(typeof heal).toBe('function'));\n"}
+        good, bad_ = M.finalize([by["js-shortest-path"], weak], log=lambda *a: None)
+        t("weak tests are caught by mutation testing; strong ones pass", [x["id"] for x, _ in good] == ["js-shortest-path"] and len(bad_) == 1, (good, bad_))
+        scores = {x["id"]: M.score(x)["score"] for x in val}
+        t("every hand-written task's tests catch at least 70% of mutants", all(v is None or v >= M.THRESHOLD for v in scores.values()), scores)
+        # the GRPO trial's pieces
+        adv = G.advantages([1, 0, 0, 1, -0.5, 0])
+        t("GRPO: answers better than their group are pushed up, worse ones down", adv[0] > 0 > adv[1] > adv[4] and abs(sum(adv)) < 1e-6)
+        t("GRPO: a group where every answer scores the same teaches nothing", G.advantages([1, 1, 1]) == [0.0, 0.0, 0.0])
+        t("GRPO: cheating answers are penalised", G.reward(by["js-clamp-health"], "```\nglobalThis.expect = 1;\nexport function heal(){ return 0 }\n```") == G.CHEAT)
+        for tid, p_ in (("g-mid", 5), ("g-never", 0), ("g-always", 16)):
+            T.add(dict(train[0], id=tid, split="train"))
+            with open(S.STATS, "a") as f: f.write(json.dumps({"task": tid, "source": "self", "tries": 16, "passed": p_}) + "\n")
+        mid = [x["id"] for x in G.pick_tasks() if x["id"].startswith("g-")]
+        t("GRPO uses only tasks the AI solves sometimes", mid == ["g-mid"], mid)
     finally:
         os.chdir(here); shutil.rmtree(work, ignore_errors=True)
     finish()

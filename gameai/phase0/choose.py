@@ -96,7 +96,8 @@ def install(key=None, log=say):
     vram = _g(res, "tests", "vram_in_use_gb") or round(os.path.getsize(q4) / 2**30 + 1.2, 2)
     registry.register("core", "base", "core model: chat, understanding, planning, code", q4, vram, rec["license"], rec["revision"][:10], "gguf",
                       repo=rec["repo"], mmproj=mm)
-    registry.register("core_hf", "base", "core model, training format (not loaded for use)", hf, 0, rec["license"], rec["revision"][:10], "hf", repo=rec["repo"])
+    registry.register("core_hf", "base", "core model, training format (not loaded for use)", hf, 0, rec["license"], rec["revision"][:10], "hf", repo=rec["repo"],
+                      key=key, precision=C.by_key(key).get("precision", "qlora"))
     for old in glob.glob(os.path.join("models", "base", "*")):
         if os.path.basename(old) != key: __import__("shutil").rmtree(old, ignore_errors=True)  # lean storage: one base at a time
     return {"installed": key, "gguf": q4, "vision_file": mm, "vram_gb": vram}

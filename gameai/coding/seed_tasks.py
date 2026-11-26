@@ -53,7 +53,10 @@ SEED = [
        "test('around a wall', () => expect(pathLength(['.#.', '...'], [0, 0], [2, 0])).toBe(4));\n",
        "import { pathLength } from './path.js';\ntest('blocked', () => expect(pathLength(['.#.', '.#.'], [0, 0], [2, 1])).toBe(-1));\n"
        "test('same cell', () => expect(pathLength(['..'], [1, 0], [1, 0])).toBe(0));\n"
-       "test('maze', () => expect(pathLength(['...#', '.#..', '...#', '#...'], [0, 0], [3, 3])).toBe(6));\n"),
+       "test('maze', () => expect(pathLength(['...#', '.#..', '...#', '#...'], [0, 0], [3, 3])).toBe(6));\n"
+       "test('going left and up', () => expect(pathLength(['....', '.##.', '...#'], [2, 2], [3, 0])).toBe(7));\n"
+       "test('never outside the grid', () => expect(pathLength(['.#', '.#', '..'], [0, 0], [1, 2])).toBe(3));\n"
+       "test('walls at the edge stay walls', () => expect(pathLength(['..#.', '..#.', '..#.'], [0, 0], [3, 0])).toBe(-1));\n"),
     js("js-score-combo", "Write `export function comboScore(hits)` in combo.js. hits is a list of seconds when the player hit an enemy. "
        "Each hit is worth 10 points times the current combo; the combo starts at 1 and goes up by 1 for each hit less than "
        "1.5 seconds after the previous one, otherwise it goes back to 1. Return the total.", "combo.js",
@@ -99,7 +102,9 @@ SEED = [
        "import { overlaps } from './collide.js';\ntest('overlap', () => expect(overlaps({x:0,y:0,w:10,h:10}, {x:5,y:5,w:10,h:10})).toBe(true));\n"
        "test('touching edge', () => expect(overlaps({x:0,y:0,w:10,h:10}, {x:10,y:0,w:5,h:5})).toBe(false));\n",
        "import { overlaps } from './collide.js';\ntest('touching bottom', () => expect(overlaps({x:0,y:0,w:4,h:4}, {x:0,y:4,w:4,h:4})).toBe(false));\n"
-       "test('far', () => expect(overlaps({x:0,y:0,w:1,h:1}, {x:9,y:9,w:1,h:1})).toBe(false));\ntest('inside', () => expect(overlaps({x:0,y:0,w:9,h:9}, {x:2,y:2,w:1,h:1})).toBe(true));\n",
+       "test('far', () => expect(overlaps({x:0,y:0,w:1,h:1}, {x:9,y:9,w:1,h:1})).toBe(false));\ntest('inside', () => expect(overlaps({x:0,y:0,w:9,h:9}, {x:2,y:2,w:1,h:1})).toBe(true));\n"
+       "test('touching left', () => expect(overlaps({x:5,y:0,w:4,h:4}, {x:1,y:0,w:4,h:4})).toBe(false));\n"
+       "test('touching top', () => expect(overlaps({x:0,y:6,w:4,h:4}, {x:0,y:2,w:4,h:4})).toBe(false));\n",
        starter={"collide.js": "export function overlaps(a, b) {\n  return a.x <= b.x + b.w && b.x <= a.x + a.w && a.y <= b.y + b.h && b.y <= a.y + a.h;\n}\n"}),
     # ---------------- Python ----------------
     py("py-level-stats", "Write `level_stats(rows)` in stats.py. rows is a list of strings ('#' wall, 'C' coin, 'E' enemy, '.' floor). "
