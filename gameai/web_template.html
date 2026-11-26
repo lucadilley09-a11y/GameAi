@@ -338,11 +338,24 @@ async function make(prompt,edit){
  spin(edit?'Changing your game':'Designing');const t0=performance.now(),pred=await decodeAny(prompt).finally(unspin),ms=performance.now()-t0;
  Object.defineProperty(pred,'__raw',{value:Object.fromEntries(Object.keys(pred).map(k=>[k,pred[k].value])),writable:true});  // the AI's own answer, for corrections
  for(const f of FN){const p=pred[f];if(p.value!=='auto'&&p.conf<GATE){p.unsure=true;p.guess=p.value;p.value='auto'}}
+ if(edit)keepUnmentioned(prompt,pred);
  if(askOn&&!edit){
   const queue=[...FN.filter(f=>pred[f].unsure&&QTEXT[f]).map(f=>({f,unsure:true,guess:pred[f].guess})),...IMPORTANT.filter(f=>pred[f].value==='auto'&&!pred[f].unsure).map(f=>({f}))].slice(0,2);
   if(queue.length){say(`Quick question${queue.length>1?'s':''} so it's the game you want:`,'d');pending={prompt,pred,queue,i:0};askNext();return}
  }
  finish(prompt,pred,edit,ms);
+}
+// /edit changes only what the request is about: a part changes only if the words mention it (its new value, a word
+// for it, or a word about that part, like "harder" for difficulty). Everything else stays as it was.
+const CUES={difficulty:['hard','easy','difficult','challeng','tough'],speed:['fast','slow','speed','quick'],size:['big','small','large','tiny','huge','map','size','level size'],
+ count:['more','fewer','less','lots','enemies','monsters','amount','number of'],enemy:['enemy','enemies','monster','bad guy','baddie','foe'],theme:['place','set in','world','theme','move it','location'],
+ player:['play as','character','hero','be a','i am','i\'m a'],goal:['goal','collect','win by','objective','exit','survive'],powerup:['power','boost','heart','shield','boots','item'],
+ behavior:['chase','patrol','shoot','wander','follow','roam'],doors:['door','key','switch','gate','lever'],levels:['level','stage'],boss:['boss'],timer:['time','timer','clock','second','minute']};
+function keepUnmentioned(prompt,pred){
+ const t=' '+prompt.toLowerCase()+' ';
+ for(const f of FN){const p=pred[f];if(!p||p.value==='auto')continue;
+  const words=[p.value,...((AI.synonyms&&AI.synonyms[f]&&AI.synonyms[f][p.value])||[]),...(CUES[f]||[])].map(w=>String(w).toLowerCase());
+  if(!words.some(w=>w&&t.includes(w))){p.kept=true;p.value='auto'}}
 }
 const PLACE={forest:'a forest',dungeon:'a spooky dungeon',space:'space',desert:'the desert',snow:'the snow',ocean:'the ocean',volcano:'a volcano'};
 const GOAL={coins:'collecting coins',gems:'hunting for gems',exit:'trying to find the exit',survive:'trying to survive as long as you can'};
@@ -376,7 +389,9 @@ const TRIES={fast:1,normal:8,best:16,max:32};  // quality over speed: 'best' is 
 async function finish(prompt,pred,edit,ms){
  const P={};for(const f of FN)P[f]={use:pred[f].value};
  const {r,src}=resolve(P,edit?lastGame.r:null),nr=rulesFrom(pred);r.rules=nr.length||!edit?nr:(lastGame.r.rules||[]);src.rules=nr.length?'ai':'kept';
- spin('Playtesting');let res;try{res=await bestLevel(r,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
+ spin('Playtesting');let res;try{res=await bestLevel(r,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))},
+   edit?{seed:lastGame.r.seed,balance:lastGame.r.balance}:null)}finally{unspin()}
+ if(edit&&res.best.seed!==lastGame.r.seed)say('The old map didn\'t work with this change (the playtesters couldn\'t beat it), so this is a new map.','d');
  r.seed=res.best.seed;if(res.best.balance)r.balance=res.best.balance;build(r);const play=playReport(res,r);lastGame={prompt,r,edit,raw:pred.__raw,corr:pred.__corr||null,time:new Date().toISOString(),play:{tried:res.tried,wins:res.best.wins,hard:res.best.hard,proven:res.best.proven,how:res.best.how,runs:res.best.runs}};
  if(!edit&&pred.__corr&&pred.__raw)teach(prompt,{...pred.__raw,...pred.__corr},true);
  if(API&&API.app)post('api/playlog',{prompt,recipe:r,edit,tried:res.tried,runs:res.best.runs,proven:res.best.proven,hard:res.best.hard,problems:play.probs}).catch(()=>{});
@@ -403,7 +418,7 @@ async function codeResult(r,arg){
     if(!r.ok){say(`I couldn't write working code for that yet (${esc(r.reason)}). My best try:`+show(r.code),'w');say('Try simpler words, or something like: chase me, run away, circle around me, zigzag, walk left and right, stay 150 away, or "X when I get close, otherwise Y".','d');return}
     if(r.confirm){window.__pendingCode=r;say(`I wrote working code, but I'm not sure it's what you meant (${esc(r.intent_why)}). My code makes the enemies ${esc(r.words)}:`+show(r.code),'w');say('Type /code yes to use it anyway, or say it differently.','d');return}
     say(`Understood: the enemies ${esc(r.words)}${r.intent==='matches'?' (that matches your words)':''}. Here's the code I wrote (it passed the test on try ${r.tries}):`+show(r.code));
-    const R={...lastGame.r,code:r.code,codeWords:r.words};spin('Playtesting');let res;try{res=await bestLevel(R,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))})}finally{unspin()}
+    const R={...lastGame.r,code:r.code,codeWords:r.words};spin('Playtesting');let res;try{res=await bestLevel(R,TRIES[quality]||6,(i,n)=>{spinMsg=`Playtesting (${i} of ${n})`;return new Promise(z=>setTimeout(z))},{seed:lastGame.r.seed,balance:lastGame.r.balance})}finally{unspin()}
     R.seed=res.best.seed;if(res.best.balance)R.balance=res.best.balance;lastGame={...lastGame,r:R};build(R);const pl=playReport(res,R);say(esc(pl.text),'d');if(pl.probs.length)say('Heads-up: '+esc(pl.probs.join('; ')),'w');
     showTab('game');rememberGame(lastGame);if(API&&API.app)post('api/playlog',{prompt:'/code '+arg,recipe:R,code:r.code,spec:r.spec,proven:res.best.proven}).catch(()=>{})
 }

@@ -558,13 +558,16 @@ function judge(R){
  return {runs:a.runs,last:z.runs,proven:a.proven&&z.proven,how:a.how==='search'||z.how==='search'?'search':a.how,paths:a.paths&&z.paths,hard:(a.hard+z.hard)/2,firstHard:a.hard,lastHard:z.hard};
 }
 function scoreOf(R,j,target){const q=gameQuality(R,j);return {q,score:(j.proven?0:10)+(j.paths?0:20)+Math.abs(j.hard-target)+(1-q)*.6+(R.balance?1-R.balance:0)}}
-async function bestLevel(r,n,onStep){
+async function bestLevel(r,n,onStep,keep){
  // Try up to n versions of this game (in parallel, in the background when it can). Keep the one that is
  // proven beatable, closest to the difficulty asked for, and best on the quality measures; stop early only
- // when one is clearly good.
+ // when one is clearly good. keep={seed,balance}: an edit of an existing game; its map is kept if the
+ // playtesters can still beat it, so "make it harder" changes the game, not the whole map.
  const target=HARD_TARGET[r.difficulty]??.45,cands=[],pool=judgePool();
  const run=async list=>{const out=await Promise.all(list.map(R=>pool?pool(R):Promise.resolve(judge(R))));
   out.forEach((j,k)=>{const R=list[k];cands.push({seed:R.seed,balance:R.balance,...j,...scoreOf(R,j,target)})});return out};
+ if(keep&&keep.seed!=null){await run([{...r,seed:keep.seed,balance:keep.balance}]);const c=cands[0];
+  if(c.proven){c.wins=['beginner','average','expert'].filter(k=>c.runs[k].win).length;return {best:c,tried:1,max:n,kept:true}}}
  const W=pool?pool.size:1;let done=0;
  while(done<n){const k=Math.min(W,n-done),list=[];for(let i=0;i<k;i++)list.push({...r,seed:(Math.random()*2**31)|0});
   await run(list);done+=k;if(onStep)await onStep(done,n);
