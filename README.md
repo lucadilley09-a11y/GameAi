@@ -329,3 +329,21 @@ answers no worse.
 phone size, and lists what a person would notice: overlapping things, hard-to-read text (contrast below 4.5:1),
 things cut off or off the screen, near-miss alignment, uneven spacing, buttons too small to hit and tiny text, with
 screenshots. The AI uses it to check the pages and menus it makes; the app's own page passes it.
+
+### GameUI and the interface skill (Phase 5)
+
+`gameai/kit/gameui.css` is GameUI, a small design system for game screens (title, menus, buttons, panels, HUD, health
+bars, dialogue boxes, lists, toggles, sliders, tables, inventory grids, toasts) in four styles: **clean**, **pixel**,
+**neon** and **cozy**. Every part passes the layout checker in every style at desktop and phone size.
+
+The AI learns to build screens with it the same way it learns code:
+
+- `gameai/ui/tasks.py` makes unlimited screen requests (title, pause, game over, settings, HUD, inventory, dialogue,
+  level select) in any style. Validation requests use different words and phrasings and are never trained on.
+- `gameai/ui/verify.py` accepts a screen only if it's in the style asked for, built from GameUI parts, has everything
+  the request names (texts, enough buttons, a table...), works offline with no scripts, and passes the layout checker
+  at both sizes.
+- `gameai/ui/practice.py` has the AI build each practice screen several times and keeps only screens that pass (at most
+  4 per request); a rejected screen gets one fix attempt with the checker's report, and good fixes are kept too.
+- The autopilot runs **ui_practice** then **ui_train** (the `ui` skill); the new version is used only if it builds more
+  validation screens correctly.

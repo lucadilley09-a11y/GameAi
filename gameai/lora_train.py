@@ -15,6 +15,7 @@ SKILLS = {  # skill -> (system prompt, training rows loader name). More skills a
     "game_design": "recipes",
     "code": "verified first attempts (data/coding/first_pass.jsonl)",          # plan: first-pass and repair trained separately
     "code_repair": "verified fixes of failed code (data/coding/repair.jsonl)",
+    "ui": "verified interface screens and fixes (data/ui/first_pass.jsonl, repair.jsonl)",   # plan: Phase 5
 }
 
 
@@ -30,6 +31,9 @@ def chat_rows(skill):
     if skill in ("code", "code_repair"):
         from .coding import selfteach
         return [{"system": r["system"], "prompt": r["prompt"], "answer": r["answer"]} for r in selfteach.rows("first" if skill == "code" else "repair")]
+    if skill == "ui":
+        from .ui import practice
+        return [{"system": r["system"], "prompt": r["prompt"], "answer": r["answer"]} for r in practice.rows("first") + practice.rows("repair")]
     raise KeyError(f"no training data defined for skill {skill!r} yet")
 
 
@@ -92,18 +96,23 @@ def validate(model, tok, skill, device, n=300):
             rows = [r for r in rows if "recipe" in r]
             if len(rows) < 10: continue
             out[name] = {"score": round(val_exact(model, tok, rows[:min(len(rows), 100)], RECIPE_SYSTEM, device)["fully_right"], 4), "n": min(len(rows), 100)}
-    if skill in ("code", "code_repair"):  # the real measure: validation tasks solved, checked in the sandbox
+    if skill in ("code", "code_repair", "ui"):  # the real measure: validation tasks solved, checked in the sandbox / renderer
         from .coding import evaluate
         from .phase0.qlora import chat_ids
         def generate(messages):
             import torch
             ids = chat_ids(tok, messages).to(device)
             model.eval()
-            with torch.no_grad(): out_ids = model.generate(ids, max_new_tokens=900, do_sample=False)
+            with torch.no_grad(): out_ids = model.generate(ids, max_new_tokens=1200 if skill == "ui" else 900, do_sample=False)
             model.train()
             return tok.decode(out_ids[0][ids.shape[1]:], skip_special_tokens=True)
-        r = evaluate.pass_rate(generate, repair=skill == "code_repair")
-        out["coding_tasks"] = {"score": r["pass_rate"], "n": r["tasks"]}
+        if skill == "ui":
+            from .ui import practice
+            r = practice.pass_rate(generate)
+            out["ui_screens"] = {"score": r["pass_rate"], "n": r["tasks"]}
+        else:
+            r = evaluate.pass_rate(generate, repair=skill == "code_repair")
+            out["coding_tasks"] = {"score": r["pass_rate"], "n": r["tasks"]}
     gen = (splits.rows("general", "anchor") + splits.rows("general", "rotating"))[:n]
     if gen:
         import torch

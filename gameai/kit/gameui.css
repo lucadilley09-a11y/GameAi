@@ -1,0 +1,80 @@
+/* GameUI 1.0 (plan: Phase 5, interfaces built from design-system components). The parts every game screen needs:
+   title screens, menus, buttons, panels, the HUD, health bars, dialogs, settings lists, score tables, item grids and
+   toasts, in four styles. Every part is checked by the layout checker at desktop and phone size, in every style: big
+   enough to hit, readable contrast (at least 4.5:1), consistent spacing, nothing cut off.
+
+   Use:  <div class="gui" data-theme="neon"> ... </div>     themes: clean (default), pixel, neon, cozy
+   Parts: gui-screen, gui-title, gui-subtitle, gui-menu, gui-btn (+ gui-primary, gui-danger), gui-panel, gui-row,
+          gui-hud, gui-stat, gui-bar (with <i style="width:70%">), gui-dialog, gui-speaker, gui-list, gui-item, gui-toggle,
+          gui-range, gui-table, gui-grid, gui-slot, gui-toast, gui-muted
+*/
+.gui { --bg:#11131a; --panel:#1b1f2a; --panel2:#252a38; --ink:#eef1f7; --muted:#a9b1c3; --acc:#5cc8ff; --acc-ink:#06121c;
+  --danger:#ff7a7a; --danger-ink:#1c0606; --good:#7be08f; --line:#343a4c; --radius:10px; --gap:12px; --pad:16px;
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif; --title: var(--font); --shadow: 0 8px 30px rgba(0,0,0,.35);
+  box-sizing: border-box; min-height: 100vh; margin: 0; padding: var(--pad); background: var(--bg); color: var(--ink);
+  font: 16px/1.45 var(--font); display: flex; flex-direction: column; gap: var(--gap); }
+.gui *, .gui *::before, .gui *::after { box-sizing: border-box; }
+.gui[data-theme="pixel"] { --bg:#1a1c2c; --panel:#262b44; --panel2:#333c57; --ink:#f4f4f4; --muted:#b9bfd3; --acc:#ffcd75; --acc-ink:#1a1c2c;
+  --danger:#ff8b8b; --line:#4a5278; --radius:0; --font: ui-monospace, "Cascadia Mono", Consolas, monospace; --title: var(--font);
+  --shadow: 4px 4px 0 #0b0c15; letter-spacing: .02em; }
+.gui[data-theme="neon"] { --bg:#07060f; --panel:#120f24; --panel2:#1c1838; --ink:#f3f0ff; --muted:#b8b0d9; --acc:#ff4fd8; --acc-ink:#12001a;
+  --danger:#ff6b6b; --good:#4dffb8; --line:#3a2f6b; --radius:14px; --shadow: 0 0 24px rgba(255,79,216,.25); }
+.gui[data-theme="cozy"] { --bg:#f6efe3; --panel:#fffaf2; --panel2:#efe3cf; --ink:#2f2418; --muted:#5f5040; --acc:#a8471f; --acc-ink:#fff7ef;
+  --danger:#a31f1f; --danger-ink:#fff5f5; --good:#2f6b32; --line:#d8c6aa; --radius:16px; --shadow: 0 6px 18px rgba(90,60,20,.15);
+  --title: Georgia, "Times New Roman", serif; }
+
+.gui-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--gap) * 1.5); text-align: center; }
+.gui-title { margin: 0; font: 700 clamp(28px, 7vw, 56px)/1.1 var(--title); color: var(--ink); text-wrap: balance; }
+.gui-subtitle { margin: 0; font-size: 17px; color: var(--muted); }
+.gui-muted { color: var(--muted); }
+.gui-menu { display: flex; flex-direction: column; gap: var(--gap); width: min(100%, 320px); }
+.gui-btn { appearance: none; font: 600 17px/1.2 var(--font); min-height: 48px; min-width: 48px; padding: 12px 20px; border-radius: var(--radius);
+  border: 2px solid var(--line); background: var(--panel2); color: var(--ink); cursor: pointer; box-shadow: var(--shadow);
+  transition: transform .08s ease, border-color .15s ease, background .15s ease; }
+.gui-btn:hover, .gui-btn:focus-visible { border-color: var(--acc); outline: none; transform: translateY(-1px); }
+.gui-btn:active { transform: translateY(1px); }
+.gui-btn.gui-primary { background: var(--acc); border-color: var(--acc); color: var(--acc-ink); }
+.gui-btn.gui-danger { background: var(--danger); border-color: var(--danger); color: var(--danger-ink, #1c0606); }
+.gui-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: var(--gap); width: min(100%, 520px); text-align: left; }
+.gui-panel > h2, .gui-dialog > h2 { margin: 0; font: 700 22px/1.2 var(--title); }
+.gui-row { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; justify-content: center; }
+
+.gui-hud { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: center; justify-content: space-between; padding: 10px var(--pad);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.gui-stat { display: flex; flex-direction: column; min-width: 72px; }
+.gui-stat b { font-size: 20px; line-height: 1.2; }
+.gui-stat span { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.gui-bar { position: relative; height: 14px; min-width: 120px; flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.gui[data-theme="pixel"] .gui-bar { border-radius: 0; }
+.gui-bar > i { position: absolute; inset: 0 auto 0 0; background: var(--good); border-radius: inherit; }
+
+.gui-dialog { background: var(--panel); border: 2px solid var(--line); border-radius: var(--radius); padding: var(--pad); box-shadow: var(--shadow);
+  width: min(100%, 640px); display: flex; flex-direction: column; gap: var(--gap); text-align: left; }
+.gui-dialog p { margin: 0; font-size: 18px; }
+.gui-speaker { font-weight: 700; color: var(--acc); }
+.gui[data-theme="cozy"] .gui-speaker { color: var(--acc); }
+
+.gui-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gui-item { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); min-height: 48px; padding: 8px 12px;
+  background: var(--panel2); border-radius: var(--radius); }
+.gui-toggle { appearance: none; width: 52px; height: 30px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; flex: none; border: 2px solid var(--line); }
+.gui-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); transition: left .15s; }
+.gui-toggle:checked { background: var(--acc); border-color: var(--acc); }
+.gui-toggle:checked::after { left: 24px; background: var(--acc-ink); }
+.gui-range { width: min(60%, 220px); min-height: 30px; accent-color: var(--acc); }
+
+.gui-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+.gui-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; padding: 6px 10px; }
+.gui-table td { padding: 10px; border-top: 1px solid var(--line); }
+.gui-table td:last-child, .gui-table th:last-child { text-align: right; }
+
+.gui-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; width: 100%; }
+.gui-slot { aspect-ratio: 1; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: var(--panel2); border: 2px solid var(--line); border-radius: var(--radius); font-size: 13px; color: var(--ink); padding: 4px; }
+.gui-slot.gui-selected { border-color: var(--acc); }
+.gui-slot b { font-size: 22px; line-height: 1; }
+
+.gui-toast { align-self: center; background: var(--panel2); color: var(--ink); border: 1px solid var(--acc); border-radius: 999px; padding: 10px 18px; font-weight: 600; }
+.gui[data-theme="pixel"] .gui-toast { border-radius: 0; }
+@media (prefers-reduced-motion: reduce) { .gui-btn, .gui-toggle::after { transition: none; } }

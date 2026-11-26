@@ -50,6 +50,9 @@ STEPS = [  # (id, plain label, what it needs first, the command it runs)
     ("code_train", "training the coding skills: first tries and repairs, separately (about 3 hours)", None, ["gameai.autopilot", "run", "code_train"]),
     ("code_strategy", "comparing repairing code with simply trying again, at the same cost", None, ["gameai.autopilot", "run", "code_strategy"]),
     ("code_grpo", "a trial of learning straight from test results (GRPO, about 1.5 hours; kept only if it does better)", None, ["gameai.autopilot", "run", "code_grpo"]),
+    # Phase 5: interfaces
+    ("ui_practice", "practising game screens: each built several times, only screens that pass the layout checker kept (hours)", None, ["gameai.autopilot", "run", "ui_practice"]),
+    ("ui_train", "training the interface skill (about 1.5 hours)", None, ["gameai.autopilot", "run", "ui_train"]),
 ]
 
 
@@ -197,6 +200,8 @@ def run(sid):
         tune.tune(registry.load()["entries"]["core"]["path"])
     elif sid.startswith("code"):
         code_step(sid)
+    elif sid.startswith("ui_"):
+        ui_step(sid)
     else:
         raise SystemExit(f"unknown step {sid}")
 
@@ -218,6 +223,22 @@ def _core_server(skill=None, port=8791):
         if not os.path.exists(g): R.lora_to_gguf(folder, ent["core_hf"]["path"], g)
         extra = ["--lora", g]
     return R.Server(ent["core"]["path"], ctx=8192, port=port, extra=extra)
+
+
+UI_TASKS = 300      # practice screens per round
+UI_TRIES = 8        # tries per screen
+
+
+def ui_step(sid):
+    from .ui import practice
+    if sid == "ui_practice":
+        print(f"{practice.teach_from_references()} checked starter screens from the generator")
+        with _core_server("ui") as core:
+            print("the AI:", json.dumps(practice.run(core.chat, practice.practice_tasks(UI_TASKS), n=UI_TRIES)))
+    elif sid == "ui_train":
+        best = (load().get("mix") or {}).get("best_arm") or {"share": 0.3, "source": "data"}
+        if len(practice.rows("first")) < 50: raise SystemExit("fewer than 50 checked screens so far: practise more first")
+        _train("ui", 90, best["share"], best["source"])
 
 
 def code_step(sid):

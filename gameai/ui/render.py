@@ -41,6 +41,7 @@ def check(page, sizes=None, screenshots=True, out_dir=None, timeout=60):
     html = open(page, encoding="utf-8").read() if os.path.exists(str(page)) and str(page).endswith((".html", ".htm")) else page
     tmp = tempfile.mkdtemp(prefix="gameai-render-")
     out_dir = out_dir or tmp
+    os.makedirs(out_dir, exist_ok=True)
     try:
         f = os.path.join(tmp, "page.html")
         open(f, "w", encoding="utf-8").write(_page(html))
