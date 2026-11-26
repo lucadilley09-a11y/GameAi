@@ -9,6 +9,10 @@ using the PC, so your own programs stay smooth, and go full speed again when you
         gate.after_step()            # pauses a little when you're busy, not at all when you're away
 
 How busy you are is worked out every few seconds:
+    gaming   a game is in front (full screen, a game's own full-screen mode, or a program from a game folder such as
+             Steam, Epic, Riot, Xbox, GOG, Battle.net, EA, Ubisoft or Roblox), even with a controller and no keyboard
+             or mouse -> learning pauses completely and gives back the GPU memory it isn't holding on to; nothing new
+             starts. It carries on by itself when the game closes.
     away     no keyboard or mouse for AWAY_S seconds           -> full speed
     using    you're using the PC                              -> the GPU is shared: training runs USING_DUTY of the time
     heavy    you're using the PC and other programs are working hard (a game, a render, compiling: more than
@@ -23,6 +27,11 @@ USING_DUTY = 0.5
 HEAVY_DUTY = 0.15
 HEAVY_CPU = 45
 CHECK_S = 5
+GAME_FOLDERS = ("\\steamapps\\common\\", "\\epic games\\", "\\riot games\\", "\\xboxgames\\", "\\windowsapps\\microsoft.minecraft",
+                "\\gog galaxy\\games\\", "\\battle.net\\", "\\blizzard", "\\ea games\\", "\\electronic arts\\", "\\ubisoft game launcher\\games\\",
+                "\\roblox\\versions\\", "\\games\\")
+GAME_EXES = ("robloxplayerbeta.exe", "minecraft.exe", "javaw.exe", "fortniteclient-win64-shipping.exe", "valorant-win64-shipping.exe",
+             "leagueoflegends.exe", "cs2.exe", "r5apex.exe", "gta5.exe", "rocketleague.exe")
 OFF = os.environ.get("GAMEAI_FULL_SPEED") == "1"   # the autopilot's away-time jobs and tests can turn it off
 
 
@@ -68,6 +77,43 @@ def fullscreen_app():
         return False
 
 
+def _foreground_exe():
+    """path of the program whose window is in front, lower case ('' if unknown)"""
+    if os.name != "nt": return ""
+    try:
+        import ctypes, psutil
+        u = ctypes.windll.user32
+        pid = ctypes.c_ulong()
+        u.GetWindowThreadProcessId(u.GetForegroundWindow(), ctypes.byref(pid))
+        return (psutil.Process(pid.value).exe() or "").lower()
+    except Exception:
+        return ""
+
+
+def game_mode_screen():
+    """Windows' own signal: a game running in full-screen mode (Direct3D exclusive) or 'busy' full screen"""
+    if os.name != "nt": return False
+    try:
+        import ctypes
+        st = ctypes.c_int()
+        if ctypes.windll.shell32.SHQueryUserNotificationState(ctypes.byref(st)) != 0: return False
+        return st.value in (2, 3)  # QUNS_BUSY (full-screen app), QUNS_RUNNING_D3D_FULL_SCREEN
+    except Exception:
+        return False
+
+
+def gaming():
+    """is a game in front right now? (works with a controller too: it doesn't depend on keyboard or mouse)"""
+    if OFF or os.name != "nt": return False
+    exe = _foreground_exe()
+    if exe and (any(f in exe for f in GAME_FOLDERS) or os.path.basename(exe) in GAME_EXES): return True
+    if game_mode_screen(): return True
+    if fullscreen_app():
+        name = os.path.basename(exe)  # a full-screen browser or video player is a video, not a game: "heavy" covers that
+        return name not in ("chrome.exe", "msedge.exe", "firefox.exe", "vlc.exe", "explorer.exe", "brave.exe", "opera.exe")
+    return False
+
+
 def others_cpu():
     """% of the processor used by programs other than this one and its family"""
     try:
@@ -84,8 +130,12 @@ def others_cpu():
 
 def state():
     if OFF: return "away"
+    if gaming(): return "gaming"   # before "away": a controller doesn't count as keyboard or mouse
     if idle_seconds() >= AWAY_S: return "away"
     return "heavy" if fullscreen_app() or others_cpu() > HEAVY_CPU else "using"
+
+
+REAL_STATE = state
 
 
 class Gate:
@@ -99,12 +149,13 @@ class Gate:
         now = time.perf_counter()
         work = now - self.last
         if now - self.checked > CHECK_S:
-            new = state()
-            if new != self.state and self.log:
-                self.log({"away": "You're away: learning at full speed.", "using": "You're using the PC: learning slows down to keep it smooth.",
-                          "heavy": "A game or heavy program is running: learning is mostly paused."}[new])
-            self.state, self.checked = new, now
-        duty = {"away": 1.0, "using": USING_DUTY, "heavy": HEAVY_DUTY}[self.state]
+            self._update(now)
+        if self.state == "gaming":
+            self._free_gpu()
+            while self.state == "gaming":  # paused until the game closes
+                time.sleep(CHECK_S); self._update(time.perf_counter())
+            self.last = time.perf_counter(); return
+        duty = {"away": 1.0, "using": USING_DUTY, "heavy": HEAVY_DUTY}.get(self.state, HEAVY_DUTY)
         if duty < 1.0:
             try:
                 import torch
@@ -112,3 +163,18 @@ class Gate:
             except Exception: pass
             time.sleep(min(30.0, work * (1 / duty - 1)))
         self.last = time.perf_counter()
+
+    def _update(self, now):
+        new = state()
+        if new != self.state and self.log:
+            self.log({"away": "You're away: learning at full speed.", "using": "You're using the PC: learning slows down to keep it smooth.",
+                      "heavy": "A heavy program is running: learning is mostly paused.",
+                      "gaming": "You're gaming: learning is paused until the game closes."}[new])
+        self.state, self.checked = new, now
+
+    @staticmethod
+    def _free_gpu():
+        try:
+            import torch
+            if torch.cuda.is_available(): torch.cuda.synchronize(); torch.cuda.empty_cache()  # spare GPU memory back to the game
+        except Exception: pass

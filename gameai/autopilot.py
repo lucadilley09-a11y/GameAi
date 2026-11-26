@@ -112,6 +112,8 @@ def next_step(st):
 def may_start(st, idle_s, hour=None):
     when = (st["answers"].get("when") or {}).get("choice", "")
     if idle_s < IDLE_MIN * 60: return False
+    from . import polite
+    if polite.gaming(): return False  # never start long work in the middle of a game
     if when.startswith("Only at night"):
         h = time.localtime().tm_hour if hour is None else hour
         return h >= NIGHT[0] or h < NIGHT[1]

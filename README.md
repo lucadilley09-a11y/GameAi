@@ -341,6 +341,12 @@ answers no worse.
   autopilot step and daily. The base model's multi-GB training copy is removed when unused for 3 days and
   downloaded again (same version) when training needs it. `/storage` shows what uses space; `/storage clean` cleans now.
 
+**Gaming:** when a game is in front, learning pauses completely and hands back the GPU memory it isn't holding on to,
+and the autopilot doesn't start anything new. It notices full-screen games, Windows' own "game running full screen"
+signal, and programs from game folders (Steam, Epic, Riot, Xbox, GOG, Battle.net, EA, Ubisoft, Roblox), even when you
+play with a controller. It carries on by itself when the game closes. All background jobs also get low disk priority,
+so big model downloads don't slow your games or programs.
+
 ## Layout checker (Phase 5)
 
 `python -m gameai.ui page.html` opens a page in your own Edge or Chrome without a window (offline), at desktop and

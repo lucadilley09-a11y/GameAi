@@ -183,6 +183,22 @@ def speedups_1_to_3():
     t("a bigger size starts from the current smaller AI", All.smaller_current("large") == "models/current.pt" and All.smaller_current("base") == "models/current.pt")
     t("the same or a smaller size starts fresh", All.smaller_current("small") is None and All.smaller_current("tiny") is None)
     os.remove("models/current.pt")
+    # gaming: detected before "away" (controllers don't count as input), pauses learning, blocks new work
+    from gameai import polite as Po, autopilot as Ap
+    saved = (Po.gaming, Po.idle_seconds, Po.CHECK_S, Po.OFF, Po.state)
+    Po.state = Po.REAL_STATE  # earlier tests swap state() for stand-ins
+    try:
+        Po.OFF = False; Po.gaming = lambda: True; Po.idle_seconds = lambda: 10**6
+        t("a game in front counts as gaming even with no keyboard or mouse input", Po.state() == "gaming")
+        t("no new long work starts while you're gaming", not Ap.may_start({"answers": {}}, 10**6))
+        n = [0]
+        def flip():
+            n[0] += 1; return n[0] < 3
+        Po.gaming = flip; Po.CHECK_S = 0.01
+        g = Po.Gate(); g.after_step()
+        t("learning waits while you're gaming, then carries on by itself", n[0] >= 3 and g.state == "away", (n, g.state))
+    finally:
+        Po.gaming, Po.idle_seconds, Po.CHECK_S, Po.OFF, Po.state = saved
 
 
 main()
