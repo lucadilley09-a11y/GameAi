@@ -1,7 +1,7 @@
 {
 "files": {
 ".gitignore": "ca7b9564994dff94af114ccc0c8e1f2ae4f75e5e81f9aeed2cb973f4eca8f320",
-"README.md": "a52eb3c9c5ce2fb1c5bc01b79c289f7697acbbbecc91a8ad70b3f58198e5c6fd",
+"README.md": "f1632429990b0ad49bca0551b31f3194a12e33a5cfdbfecd3d99f0be17a43693",
 "docs/RELEASE.md": "48ccecf077f43bfa8dc7a02ae20fe62d688ba0b02bda130cc175785c8f96e50b",
 "docs/gamekit.md": "5e2ae7be9376c2708df9b2234ba5d1d8d03b6a66cb09fa44bc88bca2646f2cba",
 "gameai/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -102,10 +102,14 @@
 "gameai/tplay.py": "d8f65b49ec838380dac2199dcbb75dd83328feb8aa51facb01895e6282ba6275",
 "gameai/track.py": "bc29148cbb45629b3e49f783deed23b5a4e6b4619bcd5f8120be192f6729a38b",
 "gameai/train.py": "7474aab9342f2df6ae82362bf0d43e75eef8a8ada7fe4eab86de81cba7444062",
+"gameai/ui/__init__.py": "30e37433e011898408d4513a94c780f868333230cdb6101a2210abc0cc8b3d99",
+"gameai/ui/__main__.py": "d1b4f5396d457c7f42f3a3e5c0e8be6c1e6a21988b1a30b314fed2751325fa58",
+"gameai/ui/layout_check.js": "b39ea6ebcd0e475849bc069e1d19e57395a347c055042bcaf9dfaa9ebd6621e7",
+"gameai/ui/render.py": "ee08afa1a3fa439a9c05ff259c90879c287acd5dc0a3502494d4d30109d190c6",
 "gameai/update.py": "a7bdb23eb10314c4d5dccc26f8c9b11419ec6262f81caed6c3b72db5d061d12a",
 "gameai/versions.py": "6c59b9118426b2874a4d7551fc08c7835dea1362a87392470e7cfd3dd3ac019d",
 "gameai/web_ai.js": "22d29098151322ed5c729dbcf71d595b38802e8d0fbb6f21161c95838af4c294",
-"gameai/web_template.html": "f5fe0b8c62773a8f282d83740cc08923b6cee0dbc16ec3f809bbe77a094deca0",
+"gameai/web_template.html": "b83f27ce77ba8b54027c6d7bb37cfa1174241e371c189e15949d8ed76bb49aae",
 "requirements.txt": "5fc7fe93b88f67f9992ca3e7f75b9e530b7891f3331d4294f9eae7374c2faff2",
 "setup.bat": "a1d8837216732cddd16d4e5a35407ad21ac237061e98fb5e41b9f87fd7f07f87",
 "start-debug.bat": "0e277f3164f584dee48f331d6af04d18610667781b5a6463c373fee4eaf7cb43",
@@ -121,6 +125,7 @@
 "tests/test_planner.py": "5e78ed58c5ab9aa5fef66cb747abaf989c9933b61b7454c293ae2d94dbe4b937",
 "tests/test_repair.py": "14ed7e1e80b1483ce94268123c5617c8b2c7c7de171855860466e292e23f4f4c",
 "tests/test_sealed.py": "1f8fd437597a8cf53e98f845df7f6dcfb2dd29222668674cc3f2c7cc6ae1d057",
+"tests/test_ui.py": "5ce5039d8c2f8765e5457349d02d3e72d8cca3815bfcf969e9242f32947413af",
 "tests/test_updater.py": "0bca4489cbbb3521effc2b2165826b2c1b70246334432bd83ac1f157438c535c",
 "training-check.bat": "9cdf585945d918d805d2122e9afae3a1ee922f280097a6ffd8c5b0bf26a0fbaa"
 }

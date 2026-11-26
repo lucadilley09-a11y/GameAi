@@ -322,3 +322,10 @@ answers no worse.
 - **Storage:** old downloads, checkpoints, leftovers and versions beyond the last 10 are cleaned after every
   autopilot step and daily. The base model's multi-GB training copy is removed when unused for 3 days and
   downloaded again (same version) when training needs it. `/storage` shows what uses space; `/storage clean` cleans now.
+
+## Layout checker (Phase 5)
+
+`python -m gameai.ui page.html` opens a page in your own Edge or Chrome without a window (offline), at desktop and
+phone size, and lists what a person would notice: overlapping things, hard-to-read text (contrast below 4.5:1),
+things cut off or off the screen, near-miss alignment, uneven spacing, buttons too small to hit and tiny text, with
+screenshots. The AI uses it to check the pages and menus it makes; the app's own page passes it.

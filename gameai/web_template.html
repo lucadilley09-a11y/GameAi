@@ -6,15 +6,17 @@
 <style>
 /* LOOK: a code editor (like VS Code). Title bar, side bar with your games and your AI, the game and the
    learning graph as editor tabs, the terminal as the bottom panel, and a blue status bar. */
-:root{color-scheme:dark;--bg:#1e1e1e;--side:#252526;--act:#333333;--tab:#2d2d2d;--line:#2b2b2b;--line2:#3c3c3c;--ink:#cccccc;--hi:#e7e7e7;--dim:#858585;--acc:#4fc1ff;--blue:#0078d4;--ok:#89d185;--warn:#cca700;--bad:#f48771;--sel:#c586c0;--ui:"Segoe UI",system-ui,-apple-system,sans-serif;--mono:"Cascadia Code","JetBrains Mono",Consolas,ui-monospace,monospace}
+:root{color-scheme:dark;--bg:#1e1e1e;--side:#252526;--act:#333333;--tab:#2d2d2d;--line:#2b2b2b;--line2:#3c3c3c;--ink:#cccccc;--hi:#e7e7e7;--dim:#9d9d9d;--acc:#4fc1ff;--blue:#0078d4;--ok:#89d185;--warn:#cca700;--bad:#f48771;--sel:#c586c0;--ui:"Segoe UI",system-ui,-apple-system,sans-serif;--mono:"Cascadia Code","JetBrains Mono",Consolas,ui-monospace,monospace}
 *{box-sizing:border-box;min-width:0}html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--ui);overflow:hidden;display:grid;grid-template-rows:30px minmax(0,1fr) 22px;height:100vh}
 .title{background:#181818;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px;color:var(--dim);font-size:12px;user-select:none}
 .title b{color:var(--ink);font-weight:400}.title .logo{color:var(--acc);margin-right:8px}
+.title>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#titleR{min-width:0;margin-left:12px}
+@media (max-width:640px){.title .sub{display:none}}
 .work{display:grid;grid-template-columns:48px 230px minmax(0,1fr);min-height:0}
 body.noside .work{grid-template-columns:48px minmax(0,1fr)}body.noside .side{display:none}
 .actbar{background:var(--act);display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:4px}
-.actbar button{all:unset;cursor:pointer;width:48px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-left:2px solid transparent}
+.actbar button{all:unset;box-sizing:border-box;cursor:pointer;width:48px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--dim);border-left:2px solid transparent}
 .actbar button:hover,.actbar button.on{color:var(--hi)}.actbar button.on{border-left-color:var(--hi)}
 .actbar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .side{background:var(--side);border-right:1px solid var(--line);overflow-y:auto;font-size:13px}
@@ -49,7 +51,7 @@ canvas:focus{outline:1px solid var(--blue)}
 #log>div.d{margin-top:-.5em;padding-left:5ch}#log>div.d::before{content:'⎿';position:absolute;left:2ch;color:var(--dim)}
 #log>div.u{padding-left:0;color:var(--dim)}#log>div.raw{padding-left:0}
 .a,.u{color:var(--ink)}.d{color:var(--dim)}.w{color:var(--warn)}.e{color:var(--bad)}.k{color:var(--acc)}.ok{color:var(--ok)}
-.welcome{border:1px solid var(--line2);padding:10px 14px;display:inline-block;max-width:100%}.welcome b{color:var(--acc);font-weight:400}
+.welcome{border:1px solid var(--line2);border-left:2px solid var(--acc);border-radius:4px;padding:12px 16px;display:block;max-width:640px;background:linear-gradient(90deg,rgba(79,193,255,.06),transparent 60%)}.welcome b{color:var(--acc);font-weight:400}
 .menu{display:flex;flex-direction:column;margin:6px 0 2px}
 .qbtn{background:#0e639c;color:#fff;border:0;padding:3px 10px;margin:6px 6px 0 0;font:inherit;cursor:pointer;border-radius:2px}.qbtn:hover{background:#1177bb}.qbtn:disabled{opacity:.45;cursor:default}
 .menu button{all:unset;cursor:pointer;padding:1px 0 1px 2ch;position:relative;color:var(--ink);font:inherit}
@@ -71,7 +73,7 @@ table{border-collapse:collapse;margin:2px 0}td{padding:0 3ch 0 0;vertical-align:
 body.drag .term{outline:1px dashed var(--acc);outline-offset:-4px}
 @media(max-width:900px){.work{grid-template-columns:minmax(0,1fr)!important}.actbar,.side{display:none}}
 </style></head><body>
-<header class="title"><span><span class="logo">◆</span><b>Game AI</b> — your own game-making AI</span><span id="titleR">Terminal · Game · Learning</span></header>
+<header class="title"><span><span class="logo">◆</span><b>Game AI</b><span class="sub"> — your own game-making AI</span></span><span id="titleR">Terminal · Game · Learning</span></header>
 <div class="work">
  <nav class="actbar" aria-label="Views">
   <button id="aGames" class="on" title="Your games and your AI (toggle the side bar)" aria-label="Side bar"><svg viewBox="0 0 24 24"><path d="M4 5h6l2 2h8v12H4z"/></svg></button>
@@ -114,7 +116,7 @@ body.drag .term{outline:1px dashed var(--acc);outline-offset:-4px}
   </div>
  </section>
 </div>
-<footer class="status"><span class="l"><span id="sbVer">⎇ main</span><span id="sbJob"></span></span><span class="r"><span id="mode">starting…</span><span>/help</span></span></footer>
+<footer class="status"><span class="l"><span id="sbVer">● Game AI</span><span id="sbJob"></span></span><span class="r"><span id="mode">starting…</span><span>/help</span></span></footer>
 <button id="editBtn" class="stub"></button><button id="restartBtn" class="stub"></button>
 <input id="files" type="file" multiple accept=".json,.bin" class="stub">
 <script>/*BUILTIN*/</script>
@@ -249,25 +251,25 @@ function drawGraph(pts,opt){
  const xs=pts.map(p=>p.x),x0=Math.min(...xs),x1=Math.max(...xs,x0+1e-9);
  const X=v=>L+(v-x0)/(x1-x0||1)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo||1))*(H-T-B);
  const line=s=>{const q=pts.filter(p=>p[s.k]!=null);if(!q.length)return'';if(q.length===1)return`<circle cx="${X(q[0].x)}" cy="${Y(q[0][s.k])}" r="3" fill="${s.c}"/>`;return`<polyline points="${q.map(p=>X(p.x)+','+Y(p[s.k])).join(' ')}" fill="none" stroke="${s.c}" stroke-width="${s.w}" ${s.dash?'stroke-dasharray="4 4"':''} stroke-linejoin="round"/>`};
- let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2b2b2b"/><text x="${L-6}" y="${Y(v)+4}" fill="#858585" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
+ let ticks='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;ticks+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2b2b2b"/><text x="${L-6}" y="${Y(v)+4}" fill="#9d9d9d" font-size="11" text-anchor="end">${(v*100).toFixed(1)}%</text>`}
  const showY=on.some(s=>s.k==='y');
- const tries=showY?pts.filter(p=>p.c!=null&&!p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.c)}" r="3" fill="none" stroke="#858585"/>`).join(''):'';
+ const tries=showY?pts.filter(p=>p.c!=null&&!p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.c)}" r="3" fill="none" stroke="#9d9d9d"/>`).join(''):'';
  const dots=showY?pts.filter(p=>p.dot).map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="4" fill="#4fc1ff"/>`).join(''):'';
  const lastP=pts.at(-1);
  g.innerHTML=ticks+on.slice().reverse().map(line).join('')+tries+dots+
-  `<text x="${L}" y="${H-6}" fill="#858585" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#858585" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
+  `<text x="${L}" y="${H-6}" fill="#9d9d9d" font-size="11">${esc(opt.x0)}</text><text x="${W-R}" y="${H-6}" fill="#9d9d9d" font-size="11" text-anchor="end">${esc(opt.x1)}</text>`+
   (showY?`<text x="${Math.min(X(lastP.x)+6,W-R-60)}" y="${Y(lastP.y)-8}" fill="#4fc1ff" font-size="12">${(lastP.y*100).toFixed(2)}%</text>`:'');
  // size of the AI (parameters): its own small chart, because it only changes when you train a bigger model
  const ps=pts.filter(p=>p.params);const g2=$('graph2');
  if(!ps.length){g2.innerHTML='';return}
  const pm=ps.map(p=>p.params/1e6),phi=Math.max(...pm)*1.15,plo=0,H2=70,Y2=v=>8+(1-(v-plo)/(phi-plo||1))*(H2-26);
  let path='';ps.forEach((p,i)=>{const x=X(p.x),y=Y2(p.params/1e6);path+=i?` H${x} V${y}`:`M${x} ${y}`});
- g2.innerHTML=`<text x="${L-6}" y="14" fill="#858585" font-size="11" text-anchor="end">size</text><line x1="${L}" x2="${W-R}" y1="${H2-18}" y2="${H2-18}" stroke="#2b2b2b"/>`+
-  `<path d="${path} H${X(lastP.x)}" fill="none" stroke="#b5cea8" stroke-width="2"/><text x="${L}" y="${H2-4}" fill="#858585" font-size="11">Size of your AI: ${(ps.at(-1).params/1e6).toFixed(2)} million parameters (how much it can hold; goes up when you /train a bigger one)</text>`;
+ g2.innerHTML=`<text x="${L-6}" y="14" fill="#9d9d9d" font-size="11" text-anchor="end">size</text><line x1="${L}" x2="${W-R}" y1="${H2-18}" y2="${H2-18}" stroke="#2b2b2b"/>`+
+  `<path d="${path} H${X(lastP.x)}" fill="none" stroke="#b5cea8" stroke-width="2"/><text x="${L}" y="${H2-4}" fill="#9d9d9d" font-size="11">Size of your AI: ${(ps.at(-1).params/1e6).toFixed(2)} million parameters (how much it can hold; goes up when you /train a bigger one)</text>`;
 }
 function legend(rows){
  const have=SERIES.filter(s=>rows.some(r=>(s.k==='y'?r.exact:r[s.k])!=null));
- $('legend').innerHTML=have.map(s=>`<label><input type="checkbox" data-k="${s.k}" ${graphOff[s.k]?'':'checked'}><i style="border-color:${s.c};${s.dash?'border-top-style:dashed':''}"></i>${s.name}</label>`).join('')+'<label style="cursor:default"><i style="border:0;width:8px;height:8px;border-radius:50%;background:#4fc1ff"></i>switched to a better version</label><label style="cursor:default"><i style="border:1px solid #858585;width:8px;height:8px;border-radius:50%"></i>tried, not better</label>';
+ $('legend').innerHTML=have.map(s=>`<label><input type="checkbox" data-k="${s.k}" ${graphOff[s.k]?'':'checked'}><i style="border-color:${s.c};${s.dash?'border-top-style:dashed':''}"></i>${s.name}</label>`).join('')+'<label style="cursor:default"><i style="border:0;width:8px;height:8px;border-radius:50%;background:#4fc1ff"></i>switched to a better version</label><label style="cursor:default"><i style="border:1px solid #9d9d9d;width:8px;height:8px;border-radius:50%"></i>tried, not better</label>';
  $('legend').querySelectorAll('input').forEach(c=>c.onchange=()=>{graphOff[c.dataset.k]=!c.checked;store.set('gameai.graphoff',graphOff);showLearning(lastStatusLine)});
 }
 let lastStatusLine='';
@@ -453,7 +455,7 @@ function sideAI(st){
  if(st){rows.push(['runs on',st.gpu||'CPU']);if(st.fresh)rows.push(['gets right',(Math.floor(st.fresh.exact*1000)/10)+'%']);rows.push(['app version',st.version||'dev']);if(st.sharing)rows.push(['Chromebook','shared'])}
  else rows.push(['runs on','this device']);
  $('sbAI').innerHTML=rows.map(([k,v])=>`<div class="kv">${k}<b>${esc(String(v))}</b></div>`).join('');
- if(st)$('sbVer').textContent='⎇ main · '+(st.version||'dev');
+ if(st)$('sbVer').textContent='● Game AI '+(st.version||'dev');
 }
 async function sideLearn(st){
  if(!(API&&API.app)){$('sbLearn').innerHTML='<div class="kv">Needs your PC</div>';return}
@@ -563,7 +565,7 @@ addEventListener('keydown',e=>{if(e.target===inp)return;keys[e.code]=true;
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false});
 $('log').addEventListener('click',()=>inp.focus());
-say(`<div class="welcome"><b>✻</b> Welcome to <b>Game AI</b>!<br><br><span class="d">  your own game-making AI, built from scratch<br>  /help for commands · just type an idea to make a game</span></div>`,'raw');
+say(`<div class="welcome"><b>✻</b> Welcome to <b>Game AI</b>, your own game-making AI.<br><br><span class="d">Describe a game to make it, like <span class="k">a ninja in a spooky dungeon</span>.<br>Type <span class="k">/help</span> to see everything it can do.</span></div>`,'raw');
 boot();inp.focus();
 }
 </script>
