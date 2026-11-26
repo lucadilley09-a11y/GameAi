@@ -110,6 +110,11 @@ def next_step(st):
                 (st.get("extra_questions") or {}).pop(f"failed_{sid}", None)
                 news(st, f"A fix for '{label}' arrived: trying it again.", "a"); save(st)
                 return sid, f"{label} (step {i + 1} of {len(STEPS)})", cmd
+            rounds = st.setdefault("retry_rounds", {}).get(sid, 0)
+            if rounds < 3 and time.time() - last_failure(sid) > 3 * 3600:  # many failures are passing (internet, a busy GPU)
+                st["retry_rounds"][sid] = rounds + 1; st["tries"].pop(sid, None)
+                news(st, f"Trying '{label}' again after a break (try round {rounds + 2} of 4).", "w"); save(st)
+                return sid, f"{label} (step {i + 1} of {len(STEPS)})", cmd
             return None, f"'{label}' failed twice", None
         return sid, f"{label} (step {i + 1} of {len(STEPS)})", cmd
     return None, "all done", None
@@ -138,6 +143,17 @@ def report(sid, label):
     with open(REPORTS, "a", encoding="utf-8") as f:
         f.write(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "step": sid, "label": label, "version": _version(),
                             "log_tail": tail}, ensure_ascii=False) + "\n")
+
+
+def last_failure(sid):
+    t = 0.0
+    if os.path.exists(REPORTS):
+        for l in open(REPORTS, encoding="utf-8"):
+            try:
+                r = json.loads(l)
+                if r.get("step") == sid: t = time.mktime(time.strptime(r["time"], "%Y-%m-%d %H:%M:%S"))
+            except (ValueError, KeyError): pass
+    return t
 
 
 def fixed_since(sid):
