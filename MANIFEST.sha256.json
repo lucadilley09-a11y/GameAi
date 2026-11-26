@@ -117,7 +117,7 @@
 "gameai/versions.py": "6c59b9118426b2874a4d7551fc08c7835dea1362a87392470e7cfd3dd3ac019d",
 "gameai/web_ai.js": "22d29098151322ed5c729dbcf71d595b38802e8d0fbb6f21161c95838af4c294",
 "gameai/web_template.html": "b83f27ce77ba8b54027c6d7bb37cfa1174241e371c189e15949d8ed76bb49aae",
-"gameai/workbench.py": "d010007b3c6e710cdb0342d95c180a649c0ca93a719d1bd622266b7547f8e3d4",
+"gameai/workbench.py": "cc708652bab87cb19bf47763ca82bf44e6ab5ae0caec3d93ef349d151a8b3d30",
 "gameai_mcp.py": "81d038e8b731449721a16f2479f9bc61b779e6af01ba65e0d2874017e5c9a77e",
 "requirements.txt": "5fc7fe93b88f67f9992ca3e7f75b9e530b7891f3331d4294f9eae7374c2faff2",
 "setup.bat": "a1d8837216732cddd16d4e5a35407ad21ac237061e98fb5e41b9f87fd7f07f87",
@@ -138,6 +138,16 @@
 "tests/test_ui.py": "d7331a2f0c23e9b1d2cba74207ca5f895c2ba29ac85cc71b032464e674a71745",
 "tests/test_updater.py": "0bca4489cbbb3521effc2b2165826b2c1b70246334432bd83ac1f157438c535c",
 "tests/test_workbench.py": "04613fbe8011973e021628e78a5a6d3959ab40915d94cee4bf7ea3e2565f9b3b",
-"training-check.bat": "9cdf585945d918d805d2122e9afae3a1ee922f280097a6ffd8c5b0bf26a0fbaa"
+"training-check.bat": "9cdf585945d918d805d2122e9afae3a1ee922f280097a6ffd8c5b0bf26a0fbaa",
+"vault_seed/architecture.md": "64d301b1a164b5d3a26f730ee89ad19b02e571248df421da4f5c16c14b4e88f2",
+"vault_seed/autopilot.md": "c4842914e7d23f45b1e623e97ffd60f85bd86c9f22420c491e542632b3c78ca7",
+"vault_seed/decisions.md": "815b713abba6d07ee34d60e28a232d405e46131608a13050de78f455c544c097",
+"vault_seed/hardware.md": "3981659b58911e049645ff332b3142778c2de5c99beb11204d467d1d289fa2fd",
+"vault_seed/home.md": "aebacfaf07a6437783650d7b11572fe9b8e5309e94b01ade046b3035c5eabc1f",
+"vault_seed/ideas-for-later.md": "e0ff903776d4ea31fd44bf70ffe65457b777642b345cbfa5874155efc446dad9",
+"vault_seed/known-issues.md": "4e3c238f0e23e457f25aafa8a7431c1f32c4b23537ada7563afe129576c35a3d",
+"vault_seed/publishing-and-fixing.md": "43a748a1833337a2badf43f1d84564e9bab48353b85ed3a098e16e666e1673d7",
+"vault_seed/roadmap-status.md": "825827d200c580d55b40077fdc5bc4c024cb6799774404bcdf21ef8aebc73957",
+"vault_seed/user-rules.md": "d4dd6a6343c7fba91c7b02237120dad35dc872643d6f0fc77ff03fa182b54a51"
 }
 }

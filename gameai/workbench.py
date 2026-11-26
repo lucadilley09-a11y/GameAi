@@ -159,8 +159,15 @@ def errors_only(command: list[str], timeout: int = 120) -> dict:
 
 
 def _vault_dir() -> Path:
+    """memory/vault, with the starter notes from vault_seed/ added if they aren't there yet (never overwritten,
+    so edits made in Obsidian or by Claude stay)"""
     p = ROOT / VAULT_DIR
     p.mkdir(parents=True, exist_ok=True)
+    seed = ROOT / "vault_seed"
+    if seed.is_dir():
+        for f in seed.glob("*.md"):
+            t = p / f.name
+            if not t.exists(): t.write_text(f.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     return p
 
 
