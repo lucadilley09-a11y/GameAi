@@ -26,11 +26,12 @@ CHECK_S = 5
 OFF = os.environ.get("GAMEAI_FULL_SPEED") == "1"   # the autopilot's away-time jobs and tests can turn it off
 
 
-def lower_priority():
-    """Windows: below-normal priority for this process (and its children); elsewhere: nice 10"""
+def lower_priority(pid=None):
+    """Below-normal CPU priority and low disk priority for this process (or process pid), so your own programs come
+    first for the processor AND the disk (big model downloads and loads otherwise keep the disk at 100%)."""
     try:
         import psutil
-        p = psutil.Process()
+        p = psutil.Process(pid)
         p.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS if os.name == "nt" else 10)
         try: p.ionice(psutil.IOPRIO_LOW if os.name == "nt" else psutil.IOPRIO_CLASS_BE, *([] if os.name == "nt" else [7]))
         except Exception: pass

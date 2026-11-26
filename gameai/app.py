@@ -69,6 +69,8 @@ def run_job(args, kind="job"):
     p = subprocess.Popen([sys.executable, "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, bufsize=1,
                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), start_new_session=os.name != "nt")
     STATE["proc"] = p
+    from .polite import lower_priority
+    lower_priority(p.pid)  # jobs come after your own programs, for the processor and the disk
     os.makedirs("logs", exist_ok=True)
     jl = open("logs/job.log", "a", encoding="utf-8")  # the whole output of every job, for finding problems later
     jl.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')}  {' '.join(args)} ---\n"); jl.flush()

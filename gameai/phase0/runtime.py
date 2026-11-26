@@ -218,6 +218,10 @@ class Server:
         os.makedirs("logs", exist_ok=True)
         low = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)  # your programs come first
         self.p = subprocess.Popen(self.args, stdout=open(self.log, "w"), stderr=subprocess.STDOUT, creationflags=NO_WINDOW | low)
+        try:
+            from ..polite import lower_priority
+            lower_priority(self.p.pid)  # loading the model reads gigabytes: your programs get the disk first
+        except Exception: pass
         t0 = time.time()
         while time.time() - t0 < 600:
             if self.p.poll() is not None:

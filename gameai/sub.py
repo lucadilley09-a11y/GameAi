@@ -15,6 +15,10 @@ def run(args, prefix=None):
     p = subprocess.Popen([sys.executable, "-u", "-m", *args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
                          text=True, encoding="utf-8", errors="replace", bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
+        from .polite import lower_priority
+        lower_priority(p.pid)
+    except Exception: pass
+    try:
         for line in p.stdout:
             sys.stdout.write(line); sys.stdout.flush()
     except KeyboardInterrupt:
